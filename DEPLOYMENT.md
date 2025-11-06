@@ -12,14 +12,17 @@ Both mainnet and testnet deployments are **verified** and live at the same deter
 - **Deployment Date:** November 5, 2025
 
 ### BSC Testnet (Chain 97)
-- **Contract Address:** `0x5Fa58c84606Eba7000eCaF24C918086B094Db39a`
-- **Deployer/Admin:** `0x1804c8AB1F12E6bbf3894d4083f33e07309d1f38`
-- **Transaction Hash:** `0xf4ac315a9945a0b0d3977f0df1010e0afc692ca792a8c48a6d397a6272c1f051`
-- **Block:** 71393353
-- **Explorer:** https://testnet.bscscan.com/address/0x5fa58c84606eba7000ecaf24c918086b094db39a
-- **Status:** ✅ Verified
-- **Gas Used:** 4,424,692 (0.0004424692 BNB)
-- **Deployment Date:** November 5, 2025
+- Previous testnet deploy (superseded): `0x5Fa58c84606Eba7000eCaF24C918086B094Db39a` (admin mistakenly set to `0x1804...`).
+
+#### Fresh Testnet Deployment (Active)
+- **Contract Address:** `0xD0B591751E6aa314192810471461bDE963796306`
+- **Deployer/Admin:** `0xBf797273B60545882711f003094C065351a9CD7B`
+- **Deploy Transaction:** `0x998beae5e01058145832978d6f6311ca81f13ed7edb4aa1f8e5bf42249a020b5`
+- **Block:** 71491008
+- **Explorer:** https://testnet.bscscan.com/address/0xD0B591751E6aa314192810471461bDE963796306
+- **Status:** ⏳ Verification in progress
+- **Gas Used:** 4,509,644 (~0.0004509644 BNB @ 0.1 gwei)
+- **Deployment Date:** November 6, 2025
 
 ## Constructor Parameters
 
@@ -38,13 +41,17 @@ The following roles were granted to the admin address (`0x1804c8AB1F12E6bbf3894d
 - `PAUSER_ROLE` (0x65d7a28e3265b37a6474929f336521b332c1681b933f6cb9f3376673440d862a)
 - `SEASON_ADMIN_ROLE` (0x5effce7625dfa93143b52c2e2a8c180a76b28971dedae188ed1b54a687d2c74b)
 
-## Roles Still Requiring Assignment
+## Role Grants (Testnet)
 
-The following roles need to be granted to appropriate addresses:
+Active testnet at `0xD0B5…6306`:
 
-- `MINTER_ROLE` (0x9f2df0fed2c77648de5860a4cc508cd0818c85b8b8a1ab4ceeef8d981c8956a6)
-- `CLAIM_SIGNER_ROLE` (0x0ef29d234fa2d688cebdd72371a2fed0705633af97ae1707dc03d645587211cb)
-- `TRANSFER_AGENT_ROLE` (0x90601cb45097851a246a5f8a72fbb27b3ef393b2a92d8fdd7aa24b1be6b2ed3b)
+- `MINTER_ROLE` (0x9f2d…56a6) → `0x3fDDF486b3f539F24aBD845674F18AE33Af668f8`
+  - Tx: `0xa8735f669a7e477616d59e655048de8969c5699332cf06a2d96c31b050c51d9f`
+- `TRANSFER_AGENT_ROLE` (0x9060…ed3b) → `0x96c7ecDa74057c62D16BfeD1822e6EF6ed12EC66`
+  - Tx: `0x60d9edea2cebf0e77e681ce80640d6e22820ead7ff7b6f5f981c8ef5e3685c61`
+
+Pending:
+- `CLAIM_SIGNER_ROLE` assignment
 
 ## Post-Deployment Setup
 
@@ -95,7 +102,7 @@ cast send 0x5Fa58c84606Eba7000eCaF24C918086B094Db39a \
 
 Update your `.env` file with the deployed contract address:
 ```bash
-FP1155_ADDRESS=0x5Fa58c84606Eba7000eCaF24C918086B094Db39a
+FP1155_ADDRESS=0xD0B591751E6aa314192810471461bDE963796306
 ```
 
 ## Testing the Deployment
