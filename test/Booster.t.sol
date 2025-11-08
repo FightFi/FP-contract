@@ -72,7 +72,7 @@ contract BoosterTest is Test {
         assertEq(storedFights[0], FIGHT_1);
 
         // Verify all fights initialized as OPEN
-        (Booster.FightStatus status,,,,,,,,,,) = booster.getFight(EVENT_1, FIGHT_1);
+        (Booster.FightStatus status,,,,,,,,,,,,) = booster.getFight(EVENT_1, FIGHT_1);
         assertEq(uint256(status), uint256(Booster.FightStatus.OPEN));
 
         // Set a claim deadline
@@ -150,7 +150,7 @@ contract BoosterTest is Test {
         assertEq(fp.balanceOf(address(booster), SEASON_1), 300 ether);
 
         // Verify originalPool updated
-        (, , , , uint256 originalPool, , , , , , ) = booster.getFight(EVENT_1, FIGHT_1);
+        (, , , , uint256 originalPool, , , , , , , , ) = booster.getFight(EVENT_1, FIGHT_1);
         assertEq(originalPool, 100 ether);
     }
 
@@ -215,7 +215,7 @@ contract BoosterTest is Test {
         assertEq(fp.balanceOf(user1, SEASON_1), 10000 ether - 150 ether);
 
         // Verify originalPool updated
-        (, , , , uint256 originalPool, , , , , , ) = booster.getFight(EVENT_1, FIGHT_1);
+        (, , , , uint256 originalPool, , , , , , , , ) = booster.getFight(EVENT_1, FIGHT_1);
         assertEq(originalPool, 150 ether);
     }
 
@@ -270,7 +270,7 @@ contract BoosterTest is Test {
     booster.depositBonus(EVENT_1, FIGHT_1, 1000 ether);
 
         // Verify bonus pool updated
-    (, , , uint256 bonusPool, , , , , , , ) = booster.getFight(EVENT_1, FIGHT_1);
+    (, , , uint256 bonusPool, , , , , , , , , ) = booster.getFight(EVENT_1, FIGHT_1);
         assertEq(bonusPool, 1000 ether);
 
         // Verify FP transferred
@@ -286,7 +286,7 @@ contract BoosterTest is Test {
         booster.depositBonus(EVENT_1, FIGHT_1, 300 ether);
         vm.stopPrank();
 
-        (, , , uint256 bonusPool, , , , , , , ) = booster.getFight(EVENT_1, FIGHT_1);
+        (, , , uint256 bonusPool, , , , , , , , , ) = booster.getFight(EVENT_1, FIGHT_1);
         assertEq(bonusPool, 800 ether);
     }
 
@@ -317,7 +317,7 @@ contract BoosterTest is Test {
         emit Booster.FightStatusUpdated(EVENT_1, FIGHT_1, Booster.FightStatus.CLOSED);
         booster.updateFightStatus(EVENT_1, FIGHT_1, Booster.FightStatus.CLOSED);
 
-        (Booster.FightStatus status,,,,,,,,,,) = booster.getFight(EVENT_1, FIGHT_1);
+        (Booster.FightStatus status,,,,,,,,,,,,) = booster.getFight(EVENT_1, FIGHT_1);
         assertEq(uint256(status), uint256(Booster.FightStatus.CLOSED));
     }
 
@@ -379,8 +379,8 @@ contract BoosterTest is Test {
             uint256 totalWinningPoints,
             uint256 pointsForWinner,
             uint256 pointsForWinnerMethod,
-            ,,
-            bool calculationSubmitted
+            ,,,
+            bool calculationSubmitted,
         ) = booster.getFight(EVENT_1, FIGHT_1);
 
         assertEq(uint256(status), uint256(Booster.FightStatus.RESOLVED));
@@ -541,29 +541,29 @@ contract BoosterTest is Test {
         booster.purgeEvent(EVENT_1, operator);
     }
 
-    function testRevert_placeBoost_afterDeadline() public {
+    function testRevert_placeBoost_afterBoostCutoff() public {
         _createDefaultEvent();
         vm.prank(operator);
-        booster.setEventClaimDeadline(EVENT_1, block.timestamp + 10);
+        booster.setFightBoostCutoff(EVENT_1, FIGHT_1, block.timestamp + 10);
         vm.warp(block.timestamp + 11);
         Booster.BoostInput[] memory boosts = new Booster.BoostInput[](1);
         boosts[0] = Booster.BoostInput(FIGHT_1, 50 ether, Booster.Corner.RED, Booster.WinMethod.KNOCKOUT);
         vm.prank(user1);
-        vm.expectRevert("claim deadline passed");
+        vm.expectRevert("boost cutoff passed");
         booster.placeBoosts(EVENT_1, boosts);
     }
 
-    function testRevert_addToBoost_afterDeadline() public {
+    function testRevert_addToBoost_afterBoostCutoff() public {
         _createDefaultEvent();
         Booster.BoostInput[] memory boosts = new Booster.BoostInput[](1);
         boosts[0] = Booster.BoostInput(FIGHT_1, 50 ether, Booster.Corner.RED, Booster.WinMethod.KNOCKOUT);
         vm.prank(user1);
         booster.placeBoosts(EVENT_1, boosts);
         vm.prank(operator);
-        booster.setEventClaimDeadline(EVENT_1, block.timestamp + 10);
+        booster.setFightBoostCutoff(EVENT_1, FIGHT_1, block.timestamp + 10);
         vm.warp(block.timestamp + 11);
         vm.prank(user1);
-        vm.expectRevert("claim deadline passed");
+        vm.expectRevert("boost cutoff passed");
         booster.addToBoost(EVENT_1, FIGHT_1, 0, 10 ether);
     }
 
@@ -762,5 +762,147 @@ contract BoosterTest is Test {
 
         vm.prank(operator);
         booster.submitFightResult(EVENT_1, FIGHT_1, Booster.Corner.RED, Booster.WinMethod.KNOCKOUT, 10, 20, 20);
+    }
+
+    // ============ Cancellation Tests ============
+
+    function test_cancelFight_refundsAll() public {
+        _createDefaultEvent();
+        _placeMultipleBoosts();
+
+        uint256 user1Before = fp.balanceOf(user1, SEASON_1);
+        uint256 user2Before = fp.balanceOf(user2, SEASON_1);
+
+        // Cancel fight
+        vm.prank(operator);
+        vm.expectEmit(true, true, false, false);
+        emit Booster.FightCancelled(EVENT_1, FIGHT_1);
+        booster.cancelFight(EVENT_1, FIGHT_1);
+
+        // Verify fight marked as cancelled
+        (,,,,,,,,,,,, bool cancelled) = booster.getFight(EVENT_1, FIGHT_1);
+        assertTrue(cancelled);
+
+        // User1 claims refund
+        uint256[] memory indices1 = booster.getUserBoostIndices(EVENT_1, FIGHT_1, user1);
+        vm.prank(user1);
+        booster.claimReward(EVENT_1, FIGHT_1, indices1);
+        assertEq(fp.balanceOf(user1, SEASON_1), user1Before + 100 ether);
+
+        // User2 claims refund
+        uint256[] memory indices2 = booster.getUserBoostIndices(EVENT_1, FIGHT_1, user2);
+        vm.prank(user2);
+        booster.claimReward(EVENT_1, FIGHT_1, indices2);
+        assertEq(fp.balanceOf(user2, SEASON_1), user2Before + 200 ether);
+    }
+
+    function testRevert_cancelFight_alreadyResolved() public {
+        _createDefaultEvent();
+        _placeBoostsAndResolve();
+
+        vm.prank(operator);
+        vm.expectRevert("fight already resolved");
+        booster.cancelFight(EVENT_1, FIGHT_1);
+    }
+
+    // ============ Min Boost Amount Tests ============
+
+    function test_setMinBoostAmount() public {
+        vm.prank(operator);
+        vm.expectEmit(false, false, false, true);
+        emit Booster.MinBoostAmountUpdated(0, 10 ether);
+        booster.setMinBoostAmount(10 ether);
+
+        assertEq(booster.minBoostAmount(), 10 ether);
+    }
+
+    function testRevert_placeBoost_belowMinimum() public {
+        _createDefaultEvent();
+        
+        vm.prank(operator);
+        booster.setMinBoostAmount(50 ether);
+
+        Booster.BoostInput[] memory boosts = new Booster.BoostInput[](1);
+        boosts[0] = Booster.BoostInput(FIGHT_1, 10 ether, Booster.Corner.RED, Booster.WinMethod.KNOCKOUT);
+
+        vm.prank(user1);
+        vm.expectRevert("below min boost");
+        booster.placeBoosts(EVENT_1, boosts);
+    }
+
+    function testRevert_addToBoost_belowMinimum() public {
+        _createDefaultEvent();
+
+        // Place initial boost
+        Booster.BoostInput[] memory boosts = new Booster.BoostInput[](1);
+        boosts[0] = Booster.BoostInput(FIGHT_1, 100 ether, Booster.Corner.RED, Booster.WinMethod.KNOCKOUT);
+        vm.prank(user1);
+        booster.placeBoosts(EVENT_1, boosts);
+
+        // Set minimum
+        vm.prank(operator);
+        booster.setMinBoostAmount(50 ether);
+
+        // Try to add below minimum
+        vm.prank(user1);
+        vm.expectRevert("below min boost");
+        booster.addToBoost(EVENT_1, FIGHT_1, 0, 10 ether);
+    }
+
+    // ============ Points Validation Tests ============
+
+    function testRevert_submitResult_zeroPointsForWinner() public {
+        _createDefaultEvent();
+
+        vm.prank(operator);
+        vm.expectRevert("points for winner must be > 0");
+        booster.submitFightResult(EVENT_1, FIGHT_1, Booster.Corner.RED, Booster.WinMethod.KNOCKOUT, 0, 20, 30);
+    }
+
+    function testRevert_submitResult_methodPointsLessThanWinner() public {
+        _createDefaultEvent();
+
+        vm.prank(operator);
+        vm.expectRevert("method points must be >= winner points");
+        booster.submitFightResult(EVENT_1, FIGHT_1, Booster.Corner.RED, Booster.WinMethod.KNOCKOUT, 20, 10, 30);
+    }
+
+    function testRevert_submitResult_noneWinnerWithoutNoContest() public {
+        _createDefaultEvent();
+
+        vm.prank(operator);
+        vm.expectRevert("NONE winner requires NO_CONTEST method");
+        booster.submitFightResult(EVENT_1, FIGHT_1, Booster.Corner.NONE, Booster.WinMethod.KNOCKOUT, 10, 20, 30);
+    }
+
+    function test_submitResult_noneWinnerWithNoContest() public {
+        _createDefaultEvent();
+        _placeMultipleBoosts();
+
+        vm.prank(operator);
+        booster.submitFightResult(EVENT_1, FIGHT_1, Booster.Corner.NONE, Booster.WinMethod.NO_CONTEST, 10, 20, 30);
+
+        (,Booster.Corner winner, Booster.WinMethod method,,,,,,,,,,) = booster.getFight(EVENT_1, FIGHT_1);
+        assertEq(uint256(winner), uint256(Booster.Corner.NONE));
+        assertEq(uint256(method), uint256(Booster.WinMethod.NO_CONTEST));
+    }
+
+    // ============ View Function Tests ============
+
+    function test_totalPool() public {
+        _createDefaultEvent();
+
+        // Place boosts
+        Booster.BoostInput[] memory boosts = new Booster.BoostInput[](1);
+        boosts[0] = Booster.BoostInput(FIGHT_1, 100 ether, Booster.Corner.RED, Booster.WinMethod.KNOCKOUT);
+        vm.prank(user1);
+        booster.placeBoosts(EVENT_1, boosts);
+
+        // Deposit bonus
+        vm.prank(operator);
+        booster.depositBonus(EVENT_1, FIGHT_1, 500 ether);
+
+        // Check totalPool
+        assertEq(booster.totalPool(EVENT_1, FIGHT_1), 600 ether);
     }
 }
