@@ -409,12 +409,82 @@ contract BoosterTest is Test {
         booster.submitFightResult(EVENT_1, FIGHT_1, Booster.Corner.RED, Booster.WinMethod.KNOCKOUT, 10, 20, 30);
     }
 
-    function testRevert_submitFightResult_zeroWinningPoints() public {
+    function test_submitFightResult_noWinners() public {
         _createDefaultEvent();
+        _placeMultipleBoosts();
+
+        // Submit result with no winners (totalWinningPoints = 0)
+        vm.prank(operator);
+        vm.expectEmit(true, true, false, true);
+        emit Booster.FightResultSubmitted(
+            EVENT_1,
+            FIGHT_1,
+            Booster.Corner.RED,
+            Booster.WinMethod.KNOCKOUT,
+            10,
+            20,
+            0  // No winners
+        );
+        booster.submitFightResult(
+            EVENT_1,
+            FIGHT_1,
+            Booster.Corner.RED,
+            Booster.WinMethod.KNOCKOUT,
+            10,
+            20,
+            0  // totalWinningPoints = 0 means no winners
+        );
+
+        // Verify fight is resolved
+        (Booster.FightStatus status, , , , , uint256 totalWinningPoints, , , , , , ) = booster.getFight(EVENT_1, FIGHT_1);
+        assertEq(uint256(status), uint256(Booster.FightStatus.RESOLVED));
+        assertEq(totalWinningPoints, 0);
+    }
+
+    function testRevert_claimReward_noWinners() public {
+        _createDefaultEvent();
+        _placeMultipleBoosts();
+
+        // Submit result with no winners
+        vm.prank(operator);
+        booster.submitFightResult(
+            EVENT_1,
+            FIGHT_1,
+            Booster.Corner.RED,
+            Booster.WinMethod.KNOCKOUT,
+            10,
+            20,
+            0
+        );
+
+        // Try to claim - should revert because no winners
+        uint256[] memory indices = booster.getUserBoostIndices(EVENT_1, FIGHT_1, user1);
+        vm.prank(user1);
+        vm.expectRevert("no winners");
+        booster.claimReward(EVENT_1, FIGHT_1, indices);
+    }
+
+    function test_quoteClaimable_noWinners() public {
+        _createDefaultEvent();
+        _placeMultipleBoosts();
 
         vm.prank(operator);
-        vm.expectRevert("no winners");
-        booster.submitFightResult(EVENT_1, FIGHT_1, Booster.Corner.RED, Booster.WinMethod.KNOCKOUT, 10, 20, 0);
+        booster.submitFightResult(
+            EVENT_1,
+            FIGHT_1,
+            Booster.Corner.RED,
+            Booster.WinMethod.KNOCKOUT,
+            10,
+            20,
+            0
+        );
+        // Quote claimable should return zeros when no winners
+        (uint256 totalClaimable, uint256 originalShare, uint256 bonusShare) = 
+            booster.quoteClaimable(EVENT_1, FIGHT_1, user1, false);
+        
+        assertEq(totalClaimable, 0);
+        assertEq(originalShare, 0);
+        assertEq(bonusShare, 0);
     }
 
     // ============ Claim Reward Tests ============

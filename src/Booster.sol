@@ -174,7 +174,7 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
         require(fightIds.length > 0, "no fights");
 
         // Verify season is valid and open
-    require(FP.seasonStatus(seasonId) == FP1155.SeasonStatus.OPEN, "season not open");
+        require(FP.seasonStatus(seasonId) == FP1155.SeasonStatus.OPEN, "season not open");
 
         // Create event
         events[eventId] = Event({
@@ -280,7 +280,7 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
         uint256 seasonId = events[eventId].seasonId;
 
         // Pull FP from manager
-    FP.agentTransferFrom(msg.sender, address(this), seasonId, amount, "");
+        FP.agentTransferFrom(msg.sender, address(this), seasonId, amount, "");
 
         fight.bonusPool += amount;
         emit BonusDeposited(eventId, fightId, msg.sender, amount);
@@ -308,7 +308,6 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
         uint256 totalWinningPoints
     ) external onlyRole(OPERATOR_ROLE) {
         require(events[eventId].exists, "event not exists");
-        require(totalWinningPoints > 0, "no winners");
         
         // Validate points parameters
         require(pointsForWinner > 0, "points for winner must be > 0");
@@ -490,7 +489,8 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
         }
 
         // Normal claim flow (winning boosts)
-
+        // If no winners, no one can claim rewards (check early to avoid unnecessary computation)
+        require(fight.totalWinningPoints > 0, "no winners");
         uint256 totalPayout = 0;
 
         for (uint256 i = 0; i < boostIndices.length; i++) {
@@ -720,6 +720,11 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
         if (enforceDeadline) {
             uint256 deadline = evt.claimDeadline;
             require(deadline == 0 || block.timestamp <= deadline, "claim deadline passed");
+        }
+
+        // If no winners, return zeros
+        if (fight.totalWinningPoints == 0) {
+            return (0, 0, 0);
         }
 
         uint256[] storage indices = userBoostIndices[eventId][fightId][user];
