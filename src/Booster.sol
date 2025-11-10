@@ -20,7 +20,8 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
     // ============ Types ============
     enum FightStatus {
         OPEN,     // 0 - Accepting boosts
-        RESOLVED  // 1 - Fight ended, results submitted
+        CLOSED,   // 1 - No more boosts, fight ongoing
+        RESOLVED  // 2 - Fight ended, results submitted
     }
 
     enum WinMethod {
@@ -48,7 +49,6 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
         uint256 claimedOriginal;        // Track original pool claimed so far
         uint256 claimedBonus;           // Track bonus pool claimed so far
         uint256 boostCutoff;            // Unix timestamp after which boosts are rejected (0 = uses status only)
-        bool calculationSubmitted;      // Server has submitted totalWinningPoints
         bool cancelled;                 // Fight cancelled/no-contest - full refund of principal
     }
 
@@ -330,7 +330,6 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
         fight.pointsForWinner = pointsForWinner;
         fight.pointsForWinnerMethod = pointsForWinnerMethod;
         fight.totalWinningPoints = totalWinningPoints;
-        fight.calculationSubmitted = true;
 
         emit FightResultSubmitted(
             eventId,
@@ -491,7 +490,6 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
         }
 
         // Normal claim flow (winning boosts)
-        require(fight.calculationSubmitted, "calculation not submitted");
 
         uint256 totalPayout = 0;
 
@@ -627,7 +625,6 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
      * @return claimedOriginal Original pool claimed so far
      * @return claimedBonus Bonus pool claimed so far
      * @return boostCutoff Boost cutoff timestamp
-     * @return calculationSubmitted Whether calculation is submitted
      * @return cancelled Whether fight is cancelled (refund mode)
      */
     function getFight(string calldata eventId, uint256 fightId)
@@ -645,7 +642,6 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
             uint256 claimedOriginal,
             uint256 claimedBonus,
             uint256 boostCutoff,
-            bool calculationSubmitted,
             bool cancelled
         )
     {
@@ -662,7 +658,6 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
             fight.claimedOriginal,
             fight.claimedBonus,
             fight.boostCutoff,
-            fight.calculationSubmitted,
             fight.cancelled
         );
     }
@@ -721,7 +716,6 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
         require(evt.exists, "event not exists");
         Fight storage fight = fights[eventId][fightId];
         require(fight.status == FightStatus.RESOLVED, "not resolved");
-        require(fight.calculationSubmitted, "calculation not submitted");
 
         if (enforceDeadline) {
             uint256 deadline = evt.claimDeadline;

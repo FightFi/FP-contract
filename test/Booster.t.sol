@@ -72,7 +72,7 @@ contract BoosterTest is Test {
         assertEq(storedFights[0], FIGHT_1);
 
         // Verify all fights initialized as OPEN
-        (Booster.FightStatus status,,,,,,,,,,,,) = booster.getFight(EVENT_1, FIGHT_1);
+        (Booster.FightStatus status,,,,,,,,,,,) = booster.getFight(EVENT_1, FIGHT_1);
         assertEq(uint256(status), uint256(Booster.FightStatus.OPEN));
 
         // Set a claim deadline
@@ -150,7 +150,7 @@ contract BoosterTest is Test {
         assertEq(fp.balanceOf(address(booster), SEASON_1), 300 ether);
 
         // Verify originalPool updated
-        (, , , , uint256 originalPool, , , , , , , , ) = booster.getFight(EVENT_1, FIGHT_1);
+        (, , , , uint256 originalPool, , , , , , , ) = booster.getFight(EVENT_1, FIGHT_1);
         assertEq(originalPool, 100 ether);
     }
 
@@ -215,7 +215,7 @@ contract BoosterTest is Test {
         assertEq(fp.balanceOf(user1, SEASON_1), 10000 ether - 150 ether);
 
         // Verify originalPool updated
-        (, , , , uint256 originalPool, , , , , , , , ) = booster.getFight(EVENT_1, FIGHT_1);
+        (, , , , uint256 originalPool, , , , , , , ) = booster.getFight(EVENT_1, FIGHT_1);
         assertEq(originalPool, 150 ether);
     }
 
@@ -270,7 +270,7 @@ contract BoosterTest is Test {
     booster.depositBonus(EVENT_1, FIGHT_1, 1000 ether);
 
         // Verify bonus pool updated
-    (, , , uint256 bonusPool, , , , , , , , , ) = booster.getFight(EVENT_1, FIGHT_1);
+    (, , , uint256 bonusPool, , , , , , , , ) = booster.getFight(EVENT_1, FIGHT_1);
         assertEq(bonusPool, 1000 ether);
 
         // Verify FP transferred
@@ -286,7 +286,7 @@ contract BoosterTest is Test {
         booster.depositBonus(EVENT_1, FIGHT_1, 300 ether);
         vm.stopPrank();
 
-        (, , , uint256 bonusPool, , , , , , , , , ) = booster.getFight(EVENT_1, FIGHT_1);
+        (, , , uint256 bonusPool, , , , , , , , ) = booster.getFight(EVENT_1, FIGHT_1);
         assertEq(bonusPool, 800 ether);
     }
 
@@ -317,7 +317,7 @@ contract BoosterTest is Test {
         emit Booster.FightStatusUpdated(EVENT_1, FIGHT_1, Booster.FightStatus.CLOSED);
         booster.updateFightStatus(EVENT_1, FIGHT_1, Booster.FightStatus.CLOSED);
 
-        (Booster.FightStatus status,,,,,,,,,,,,) = booster.getFight(EVENT_1, FIGHT_1);
+        (Booster.FightStatus status,,,,,,,,,,,) = booster.getFight(EVENT_1, FIGHT_1);
         assertEq(uint256(status), uint256(Booster.FightStatus.CLOSED));
     }
 
@@ -380,7 +380,7 @@ contract BoosterTest is Test {
             uint256 pointsForWinner,
             uint256 pointsForWinnerMethod,
             ,,,
-            bool calculationSubmitted,
+            bool cancelled
         ) = booster.getFight(EVENT_1, FIGHT_1);
 
         assertEq(uint256(status), uint256(Booster.FightStatus.RESOLVED));
@@ -389,7 +389,7 @@ contract BoosterTest is Test {
         assertEq(totalWinningPoints, 40);
         assertEq(pointsForWinner, 10);
         assertEq(pointsForWinnerMethod, 20);
-        assertTrue(calculationSubmitted);
+        assertFalse(cancelled); // calculationSubmitted is redundant: if status == RESOLVED && !cancelled, calculation was submitted
     }
 
     function testRevert_submitFightResult_notOperator() public {
@@ -780,7 +780,7 @@ contract BoosterTest is Test {
         booster.cancelFight(EVENT_1, FIGHT_1);
 
         // Verify fight marked as cancelled
-        (,,,,,,,,,,,, bool cancelled) = booster.getFight(EVENT_1, FIGHT_1);
+        (,,,,,,,,,,, bool cancelled) = booster.getFight(EVENT_1, FIGHT_1);
         assertTrue(cancelled);
 
         // User1 claims refund
@@ -882,7 +882,7 @@ contract BoosterTest is Test {
         vm.prank(operator);
         booster.submitFightResult(EVENT_1, FIGHT_1, Booster.Corner.NONE, Booster.WinMethod.NO_CONTEST, 10, 20, 30);
 
-        (,Booster.Corner winner, Booster.WinMethod method,,,,,,,,,,) = booster.getFight(EVENT_1, FIGHT_1);
+        (,Booster.Corner winner, Booster.WinMethod method,,,,,,,,,) = booster.getFight(EVENT_1, FIGHT_1);
         assertEq(uint256(winner), uint256(Booster.Corner.NONE));
         assertEq(uint256(method), uint256(Booster.WinMethod.NO_CONTEST));
     }
