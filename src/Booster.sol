@@ -504,6 +504,8 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
         require(fight.totalWinningPoints > 0, "no winners");
         uint256 totalPayout = 0;
 
+        uint256 pool = fight.originalPool + fight.bonusPool;
+
         for (uint256 i = 0; i < boostIndices.length; i++) {
             uint256 index = boostIndices[i];
             require(index < fightBoosts.length, "invalid boost index");
@@ -525,7 +527,6 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
             require(points > 0, "boost did not win");
 
             // Calculate payout: (points / totalPoints) * totalPool
-            uint256 pool = fight.originalPool + fight.bonusPool;
             uint256 payout = (points * pool) / fight.totalWinningPoints;
 
             boost.claimed = true;
