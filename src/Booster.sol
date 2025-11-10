@@ -20,8 +20,7 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
     // ============ Types ============
     enum FightStatus {
         OPEN,     // 0 - Accepting boosts
-        CLOSED,   // 1 - No more boosts, fight ongoing
-        RESOLVED  // 2 - Fight ended, results submitted
+        RESOLVED  // 1 - Fight ended, results submitted
     }
 
     enum WinMethod {
