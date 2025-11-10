@@ -74,6 +74,11 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
         WinMethod predictedMethod;
     }
 
+    struct ClaimInput {
+        uint256 fightId;
+        uint256[] boostIndices;
+    }
+
     // ============ Storage ============
     FP1155 public immutable FP;
 
@@ -529,18 +534,11 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
 
         // Handle cancelled fight (full refund of principal)
         if (fight.cancelled) {
-            uint256 refund = 0;
-            for (uint256 i = 0; i < boostIndices.length; i++) {
-                uint256 index = boostIndices[i];
-                require(index < fightBoosts.length, "invalid boost index");
-
-                Boost storage boost = fightBoosts[index];
-                require(boost.user == msg.sender, "not boost owner");
-                require(!boost.claimed, "already claimed");
-
-                refund += boost.amount;
-                boost.claimed = true;
-            }
+            uint256 refund = _processCancelledBoostRefund(
+                fightBoosts,
+                boostIndices,
+                msg.sender
+            );
 
             require(refund > 0, "nothing to refund");
             FP.safeTransferFrom(address(this), msg.sender, seasonId, refund, "");
@@ -555,45 +553,90 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
         uint256 pool = fight.originalPool + fight.bonusPool;
 
         for (uint256 i = 0; i < boostIndices.length; i++) {
-            uint256 index = boostIndices[i];
-            require(index < fightBoosts.length, "invalid boost index");
-
-            Boost storage boost = fightBoosts[index];
-            require(boost.user == msg.sender, "not boost owner");
-            require(!boost.claimed, "already claimed");
-
-            // Calculate points for this boost
-            uint256 points = calculateUserPoints(
-                boost.predictedWinner,
-                boost.predictedMethod,
-                fight.winner,
-                fight.method,
-                fight.pointsForWinner,
-                fight.pointsForWinnerMethod
+            totalPayout += _processWinningBoostClaim(
+                eventId,
+                fightId,
+                fight,
+                fightBoosts,
+                boostIndices[i],
+                msg.sender,
+                pool
             );
-
-            require(points > 0, "boost did not win");
-
-            // Calculate payout: (points / totalPoints) * totalPool
-            uint256 payout = (points * pool) / fight.totalWinningPoints;
-
-            boost.claimed = true;
-            totalPayout += payout;
-
-            // Track claimed amounts by pool type
-            uint256 shareOfOriginal = (points * fight.originalPool) / fight.totalWinningPoints;
-            uint256 shareOfBonus = (points * fight.bonusPool) / fight.totalWinningPoints;
-            
-            fight.claimedOriginal += shareOfOriginal;
-            fight.claimedBonus += shareOfBonus;
-
-            emit RewardClaimed(eventId, fightId, msg.sender, index, payout, points);
         }
 
         // Transfer total payout to user
         if (totalPayout > 0) {
             FP.safeTransferFrom(address(this), msg.sender, seasonId, totalPayout, "");
         }
+    }
+
+    /**
+     * @notice Claim rewards for winning boosts across multiple fights in a single transaction
+     * @param eventId Event identifier
+     * @param inputs Array of claim inputs, each containing a fightId and boost indices
+     */
+    function claimRewards(
+        string calldata eventId,
+        ClaimInput[] calldata inputs
+    ) external nonReentrant {
+        require(events[eventId].exists, "event not exists");
+        require(inputs.length > 0, "no claims");
+
+        Event storage evt = events[eventId];
+        uint256 deadline = evt.claimDeadline;
+        require(deadline == 0 || block.timestamp <= deadline, "claim deadline passed");
+
+        uint256 seasonId = evt.seasonId;
+        uint256 totalPayout = 0;
+
+        for (uint256 j = 0; j < inputs.length; j++) {
+            ClaimInput calldata input = inputs[j];
+            require(input.fightId >= 1 && input.fightId <= evt.numFights, "fightId not in event");
+            require(input.boostIndices.length > 0, "no boost indices");
+
+            Fight storage fight = fights[eventId][input.fightId];
+            require(fight.status == FightStatus.RESOLVED, "not resolved");
+
+            Boost[] storage fightBoosts = boosts[eventId][input.fightId];
+
+            // Handle cancelled fight (full refund of principal)
+            if (fight.cancelled) {
+                uint256 refund = _processCancelledBoostRefund(
+                    fightBoosts,
+                    input.boostIndices,
+                    msg.sender
+                );
+
+                if (refund > 0) {
+                    totalPayout += refund;
+                }
+                continue;
+            }
+
+            // Normal claim flow (winning boosts)
+            // If no winners, skip this fight
+            if (fight.totalWinningPoints == 0) {
+                continue;
+            }
+
+            uint256 pool = fight.originalPool + fight.bonusPool;
+
+            for (uint256 i = 0; i < input.boostIndices.length; i++) {
+                totalPayout += _processWinningBoostClaim(
+                    eventId,
+                    input.fightId,
+                    fight,
+                    fightBoosts,
+                    input.boostIndices[i],
+                    msg.sender,
+                    pool
+                );
+            }
+        }
+
+        // Transfer total payout to user
+        require(totalPayout > 0, "nothing to claim");
+        FP.safeTransferFrom(address(this), msg.sender, seasonId, totalPayout, "");
     }
 
     // ============ View Functions ============
@@ -808,6 +851,87 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
         }
 
         return pointsForWinner;
+    }
+
+    // ============ Internal Helper Functions ============
+
+    /**
+     * @notice Process refund for cancelled fight boosts
+     * @param fightBoosts Array of boosts for the fight
+     * @param boostIndices Array of boost indices to refund
+     * @param user Address claiming the refund
+     * @return refund Total refund amount
+     */
+    function _processCancelledBoostRefund(
+        Boost[] storage fightBoosts,
+        uint256[] calldata boostIndices,
+        address user
+    ) internal returns (uint256 refund) {
+        refund = 0;
+        for (uint256 i = 0; i < boostIndices.length; i++) {
+            uint256 index = boostIndices[i];
+            require(index < fightBoosts.length, "invalid boost index");
+
+            Boost storage boost = fightBoosts[index];
+            require(boost.user == user, "not boost owner");
+            require(!boost.claimed, "already claimed");
+
+            refund += boost.amount;
+            boost.claimed = true;
+        }
+    }
+
+    /**
+     * @notice Process claim for a winning boost
+     * @param eventId Event identifier
+     * @param fightId Fight number
+     * @param fight Fight storage reference
+     * @param fightBoosts Array of boosts for the fight
+     * @param boostIndex Index of the boost to claim
+     * @param user Address claiming the reward
+     * @param pool Total pool (original + bonus) for the fight
+     * @return payout Payout amount for this boost
+     */
+    function _processWinningBoostClaim(
+        string calldata eventId,
+        uint256 fightId,
+        Fight storage fight,
+        Boost[] storage fightBoosts,
+        uint256 boostIndex,
+        address user,
+        uint256 pool
+    ) internal returns (uint256 payout) {
+        require(boostIndex < fightBoosts.length, "invalid boost index");
+
+        Boost storage boost = fightBoosts[boostIndex];
+        require(boost.user == user, "not boost owner");
+        require(!boost.claimed, "already claimed");
+
+        // Calculate points for this boost
+        uint256 points = calculateUserPoints(
+            boost.predictedWinner,
+            boost.predictedMethod,
+            fight.winner,
+            fight.method,
+            fight.pointsForWinner,
+            fight.pointsForWinnerMethod
+        );
+
+        require(points > 0, "boost did not win");
+
+        // Calculate payout: (points / totalPoints) * totalPool
+        payout = (points * pool) / fight.totalWinningPoints;
+
+        boost.claimed = true;
+
+        // Track claimed amounts by pool type
+        uint256 shareOfOriginal = (points * fight.originalPool) / fight.totalWinningPoints;
+        uint256 shareOfBonus = (points * fight.bonusPool) / fight.totalWinningPoints;
+        
+        fight.claimedOriginal += shareOfOriginal;
+        fight.claimedBonus += shareOfBonus;
+
+        emit RewardClaimed(eventId, fightId, user, boostIndex, payout, points);
     }
 
     // ============ Interface Support ============
