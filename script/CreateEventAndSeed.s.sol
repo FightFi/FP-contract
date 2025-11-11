@@ -27,7 +27,8 @@ import {Booster} from "src/Booster.sol";
  *   RESULT_METHODS             string  - Comma actual methods (KNOCKOUT|SUBMISSION|DECISION|NO_CONTEST)
  *   POINTS_WINNER              string  - Comma uint points per fight (winner only)
  *   POINTS_WINNER_METHOD       string  - Comma uint points per fight (winner+method)
- *   TOTAL_WINNING_POINTS       string  - Comma uint total winning points per fight (must be >0 to resolve)
+ *   SUM_WINNERS_STAKES         string  - Comma uint sum of winning stakes per fight
+ *   WINNING_POOL_TOTAL_SHARES  string  - Comma uint total shares (sum of points * stakes for all winners) per fight
  */
 contract CreateEventAndSeed is Script {
     struct ParsedArrays {
@@ -36,7 +37,8 @@ contract CreateEventAndSeed is Script {
         uint256[] boostAmts;
         uint256[] pointsWinner;
         uint256[] pointsWinnerMethod;
-        uint256[] totalWinningPoints;
+        uint256[] sumWinnersStakes;
+        uint256[] winningPoolTotalShares;
         Booster.Corner[] boostWinners;
         Booster.WinMethod[] boostMethods;
         Booster.Corner[] resultWinners;
@@ -74,7 +76,8 @@ contract CreateEventAndSeed is Script {
             P.resultMethods = _parseMethodArray(vm.envString("RESULT_METHODS"));
             P.pointsWinner = _parseUintArray(vm.envString("POINTS_WINNER"));
             P.pointsWinnerMethod = _parseUintArray(vm.envString("POINTS_WINNER_METHOD"));
-            P.totalWinningPoints = _parseUintArray(vm.envString("TOTAL_WINNING_POINTS"));
+            P.sumWinnersStakes = _parseUintArray(vm.envString("SUM_WINNERS_STAKES"));
+            P.winningPoolTotalShares = _parseUintArray(vm.envString("WINNING_POOL_TOTAL_SHARES"));
         }
 
         // Ensure Booster has OPERATOR_ROLE and Booster is allowlisted endpoints
@@ -125,13 +128,14 @@ contract CreateEventAndSeed is Script {
         // Optionally resolve fights
         if (resolve) {
             for (uint256 i = 0; i < P.fights.length; i++) {
-                if (i >= P.resultWinners.length || i >= P.resultMethods.length || i >= P.pointsWinner.length || i >= P.pointsWinnerMethod.length || i >= P.totalWinningPoints.length) {
+                if (i >= P.resultWinners.length || i >= P.resultMethods.length || i >= P.pointsWinner.length || i >= P.pointsWinnerMethod.length || i >= P.sumWinnersStakes.length || i >= P.winningPoolTotalShares.length) {
                     console2.log("Skip resolve; missing data for fight", P.fights[i]);
                     continue;
                 }
-                uint256 totalPts = P.totalWinningPoints[i];
-                if (totalPts == 0) {
-                    console2.log("Skip resolve; totalWinningPoints=0 for fight", P.fights[i]);
+                uint256 sumStakes = P.sumWinnersStakes[i];
+                uint256 totalShares = P.winningPoolTotalShares[i];
+                if (sumStakes == 0 || totalShares == 0) {
+                    console2.log("Skip resolve; sumWinnersStakes=0 or winningPoolTotalShares=0 for fight", P.fights[i]);
                     continue;
                 }
                 booster.submitFightResult(
@@ -141,7 +145,8 @@ contract CreateEventAndSeed is Script {
                     P.resultMethods[i],
                     P.pointsWinner[i],
                     P.pointsWinnerMethod[i],
-                    totalPts
+                    sumStakes,
+                    totalShares
                 );
                 console2.log("Resolved fight", P.fights[i]);
             }

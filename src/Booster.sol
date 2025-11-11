@@ -43,11 +43,11 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
         WinMethod method;
         uint256 bonusPool;              // Manager-deposited bonus FP
         uint256 originalPool;           // Total user boost stakes
-        uint256 totalWinningPoints;     // Submitted by server after offchain calculation
+        uint256 sumWinnersStakes;       // Sum of all winning users' stakes
+        uint256 winningPoolTotalShares; // Total shares (sum of points * stakes for all winners)
         uint256 pointsForWinner;        // Points if you picked correct winner only
         uint256 pointsForWinnerMethod;  // Points if you picked correct winner AND method
-        uint256 claimedOriginal;        // Track original pool claimed so far
-        uint256 claimedBonus;           // Track bonus pool claimed so far
+        uint256 claimedAmount;          // Amount claimed from the pool so far
         uint256 boostCutoff;            // Unix timestamp after which boosts are rejected (0 = uses status only)
         bool cancelled;                 // Fight cancelled/no-contest - full refund of principal
     }
@@ -129,7 +129,8 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
         WinMethod method,
         uint256 pointsForWinner,
         uint256 pointsForWinnerMethod,
-        uint256 totalWinningPoints
+        uint256 sumWinnersStakes,
+        uint256 winningPoolTotalShares
     );
     event RewardClaimed(
         string indexed eventId,
@@ -140,7 +141,7 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
         uint256 points
     );
     event EventPurged(string indexed eventId, address indexed recipient, uint256 amount);
-    event FightPurged(string indexed eventId, uint256 indexed fightId, uint256 unclaimedOriginal, uint256 unclaimedBonus);
+    event FightPurged(string indexed eventId, uint256 indexed fightId, uint256 unclaimedPool);
 
     // ============ Constructor ============
     constructor(address _fp, address admin) {
@@ -294,13 +295,15 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
         for (uint256 i = 1; i <= evt.numFights; i++) {
             Fight storage fight = fights[eventId][i];
             if (fight.status == FightStatus.RESOLVED) {
-                uint256 unclaimedOriginal = fight.originalPool - fight.claimedOriginal;
-                uint256 unclaimedBonus = fight.bonusPool - fight.claimedBonus;
-                if (unclaimedOriginal > 0 || unclaimedBonus > 0) {
-                    emit FightPurged(eventId, i, unclaimedOriginal, unclaimedBonus);
-                    totalSweep += unclaimedOriginal + unclaimedBonus;
-                    fight.claimedOriginal = fight.originalPool;
-                    fight.claimedBonus = fight.bonusPool;
+                uint256 poolAmount = fight.originalPool + fight.bonusPool;
+                if (poolAmount == 0) continue;
+                
+                uint256 unclaimedPool = poolAmount - fight.claimedAmount;
+                
+                if (unclaimedPool > 0) {
+                    emit FightPurged(eventId, i, unclaimedPool);
+                    totalSweep += unclaimedPool;
+                    fight.claimedAmount = poolAmount;
                 }
             }
         }
@@ -349,7 +352,8 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
      * @param method How they won
      * @param pointsForWinner Points awarded for correct winner only
      * @param pointsForWinnerMethod Points awarded for correct winner AND method
-     * @param totalWinningPoints Sum of all winning users' points (calculated offchain)
+     * @param sumWinnersStakes Sum of all winning users' stakes
+     * @param winningPoolTotalShares Total shares (sum of points * stakes for all winners)
      */
     function submitFightResult(
         string calldata eventId,
@@ -358,7 +362,8 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
         WinMethod method,
         uint256 pointsForWinner,
         uint256 pointsForWinnerMethod,
-        uint256 totalWinningPoints
+        uint256 sumWinnersStakes,
+        uint256 winningPoolTotalShares
     ) external onlyRole(OPERATOR_ROLE) {
         require(events[eventId].exists, "event not exists");
         
@@ -381,7 +386,8 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
         fight.method = method;
         fight.pointsForWinner = pointsForWinner;
         fight.pointsForWinnerMethod = pointsForWinnerMethod;
-        fight.totalWinningPoints = totalWinningPoints;
+        fight.sumWinnersStakes = sumWinnersStakes;
+        fight.winningPoolTotalShares = winningPoolTotalShares;
 
         emit FightResultSubmitted(
             eventId,
@@ -390,7 +396,8 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
             method,
             pointsForWinner,
             pointsForWinnerMethod,
-            totalWinningPoints
+            sumWinnersStakes,
+            winningPoolTotalShares
         );
     }
 
@@ -547,10 +554,10 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
 
         // Normal claim flow (winning boosts)
         // If no winners, no one can claim rewards (check early to avoid unnecessary computation)
-        require(fight.totalWinningPoints > 0, "no winners");
+        require(fight.sumWinnersStakes > 0 && fight.winningPoolTotalShares > 0, "no winners");
         uint256 totalPayout = 0;
 
-        uint256 pool = fight.originalPool + fight.bonusPool;
+        uint256 prizePool = fight.originalPool - fight.sumWinnersStakes + fight.bonusPool;
 
         for (uint256 i = 0; i < boostIndices.length; i++) {
             totalPayout += _processWinningBoostClaim(
@@ -560,7 +567,7 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
                 fightBoosts,
                 boostIndices[i],
                 msg.sender,
-                pool
+                prizePool
             );
         }
 
@@ -615,11 +622,11 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
 
             // Normal claim flow (winning boosts)
             // If no winners, skip this fight
-            if (fight.totalWinningPoints == 0) {
+            if (fight.sumWinnersStakes == 0 || fight.winningPoolTotalShares == 0) {
                 continue;
             }
 
-            uint256 pool = fight.originalPool + fight.bonusPool;
+            uint256 prizePool = fight.originalPool - fight.sumWinnersStakes + fight.bonusPool;
 
             for (uint256 i = 0; i < input.boostIndices.length; i++) {
                 totalPayout += _processWinningBoostClaim(
@@ -629,7 +636,7 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
                     fightBoosts,
                     input.boostIndices[i],
                     msg.sender,
-                    pool
+                    prizePool
                 );
             }
         }
@@ -673,11 +680,11 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
      * @return method Win method (if resolved)
      * @return bonusPool Manager bonus pool
      * @return originalPool User stakes pool
-     * @return totalWinningPoints Total winning points
+     * @return sumWinnersStakes Sum of all winning users' stakes
+     * @return winningPoolTotalShares Total shares (sum of points * stakes for all winners)
      * @return pointsForWinner Points for correct winner
      * @return pointsForWinnerMethod Points for correct winner+method
-     * @return claimedOriginal Original pool claimed so far
-     * @return claimedBonus Bonus pool claimed so far
+     * @return claimedAmount Amount claimed from the pool so far
      * @return boostCutoff Boost cutoff timestamp
      * @return cancelled Whether fight is cancelled (refund mode)
      */
@@ -690,11 +697,11 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
             WinMethod method,
             uint256 bonusPool,
             uint256 originalPool,
-            uint256 totalWinningPoints,
+            uint256 sumWinnersStakes,
+            uint256 winningPoolTotalShares,
             uint256 pointsForWinner,
             uint256 pointsForWinnerMethod,
-            uint256 claimedOriginal,
-            uint256 claimedBonus,
+            uint256 claimedAmount,
             uint256 boostCutoff,
             bool cancelled
         )
@@ -706,11 +713,11 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
             fight.method,
             fight.bonusPool,
             fight.originalPool,
-            fight.totalWinningPoints,
+            fight.sumWinnersStakes,
+            fight.winningPoolTotalShares,
             fight.pointsForWinner,
             fight.pointsForWinnerMethod,
-            fight.claimedOriginal,
-            fight.claimedBonus,
+            fight.claimedAmount,
             fight.boostCutoff,
             fight.cancelled
         );
@@ -765,7 +772,7 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
         uint256 fightId,
         address user,
         bool enforceDeadline
-    ) external view returns (uint256 totalClaimable, uint256 originalShare, uint256 bonusShare) {
+    ) external view returns (uint256 totalClaimable) {
         Event storage evt = events[eventId];
         require(evt.exists, "event not exists");
         Fight storage fight = fights[eventId][fightId];
@@ -775,14 +782,14 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
             uint256 deadline = evt.claimDeadline;
             require(deadline == 0 || block.timestamp <= deadline, "claim deadline passed");
         }
-
+        totalClaimable = 0;
         // If no winners, return zeros
-        if (fight.totalWinningPoints == 0) {
-            return (0, 0, 0);
+        if (fight.sumWinnersStakes == 0 || fight.winningPoolTotalShares == 0) {
+            return totalClaimable;
         }
 
         uint256[] storage indices = userBoostIndices[eventId][fightId][user];
-        uint256 pool = fight.originalPool + fight.bonusPool;
+        uint256 prizePool = fight.originalPool - fight.sumWinnersStakes + fight.bonusPool;
         for (uint256 i = 0; i < indices.length; i++) {
             Boost storage boost = boosts[eventId][fightId][indices[i]];
             if (boost.claimed) continue;
@@ -796,13 +803,14 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
                 fight.pointsForWinnerMethod
             );
             if (points == 0) continue; // losing boost
-            uint256 payout = (points * pool) / fight.totalWinningPoints;
-            uint256 payOriginal = (points * fight.originalPool) / fight.totalWinningPoints;
-            uint256 payBonus = (points * fight.bonusPool) / fight.totalWinningPoints;
+            // Calculate winnings from the pool based on points and stakes
+            // Formula: (points * boost.amount * prizePool) / winningPoolTotalShares
+            uint256 userShares = points * boost.amount;
+            uint256 userWinnings = (prizePool * userShares) / fight.winningPoolTotalShares;
+            uint256 payout = boost.amount + userWinnings;
             totalClaimable += payout;
-            originalShare += payOriginal;
-            bonusShare += payBonus;
         }
+        return totalClaimable;
     }
 
     /**
@@ -889,7 +897,7 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
      * @param fightBoosts Array of boosts for the fight
      * @param boostIndex Index of the boost to claim
      * @param user Address claiming the reward
-     * @param pool Total pool (original + bonus) for the fight
+     * @param prizePool Prize pool (original + bonus) for the fight
      * @return payout Payout amount for this boost
      */
     function _processWinningBoostClaim(
@@ -899,7 +907,7 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
         Boost[] storage fightBoosts,
         uint256 boostIndex,
         address user,
-        uint256 pool
+        uint256 prizePool
     ) internal returns (uint256 payout) {
         require(boostIndex < fightBoosts.length, "invalid boost index");
 
@@ -919,17 +927,15 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
 
         require(points > 0, "boost did not win");
 
-        // Calculate payout: (points / totalPoints) * totalPool
-        payout = (points * pool) / fight.totalWinningPoints;
+        // Calculate winnings from the pool based on points and stakes
+        // Formula: (points * boost.amount * prizePool) / winningPoolTotalShares
+        uint256 userShares = points * boost.amount;
+        uint256 winnings = (prizePool * userShares) / fight.winningPoolTotalShares;
+        payout = winnings + boost.amount;
 
         boost.claimed = true;
-
-        // Track claimed amounts by pool type
-        uint256 shareOfOriginal = (points * fight.originalPool) / fight.totalWinningPoints;
-        uint256 shareOfBonus = (points * fight.bonusPool) / fight.totalWinningPoints;
         
-        fight.claimedOriginal += shareOfOriginal;
-        fight.claimedBonus += shareOfBonus;
+        fight.claimedAmount += payout;
 
         emit RewardClaimed(eventId, fightId, user, boostIndex, payout, points);
     }
