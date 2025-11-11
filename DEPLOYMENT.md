@@ -1,5 +1,12 @@
 # FP1155 Deployment Summary
+## Mainnet Proxy Address
 
+**FP1155 Proxy (Mainnet):** `0xD0B591751E6aa314192810471461bDE963796306`
+**Base Metadata URI:** `https://assets.fight.foundation/fp/{id}.json`
+**Open Seasons:** 0, 321, 322 (all others locked)
+**Admin/Season Admin:** 0xac5d932D7a16D74F713309be227659d387c69429
+**CLAIM_SIGNER_ROLE:** 0x02D525601e60c2448Abb084e4020926A2Ae5cB01
+**MINTER_ROLE:** 0xBf797273B60545882711f003094C065351a9CD7B
 ## ⚠️ Important: Upgradeable Contract
 
 **FP1155 is now upgradeable using the UUPS (Universal Upgradeable Proxy Standard) pattern.**

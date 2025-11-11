@@ -9,9 +9,17 @@ Seasonal, non-tradable reputation points. Each season is a tokenId. Transfers ar
 - Season status: OPEN or LOCKED (irreversible)
 - Mint either by MINTER role or via user-submitted EIP-712 claim (signed by CLAIM_SIGNER); burn allowed by holders (even when LOCKED)
 
+
+**Mainnet Proxy Address:** `0xD0B591751E6aa314192810471461bDE963796306`
+**Base Metadata URI:** `https://assets.fight.foundation/fp/{id}.json`
+**Open Seasons:** 0, 321, 322 (all others locked)
+**Admin/Season Admin:** 0xac5d932D7a16D74F713309be227659d387c69429
+**CLAIM_SIGNER_ROLE:** 0x02D525601e60c2448Abb084e4020926A2Ae5cB01
+**MINTER_ROLE:** 0xBf797273B60545882711f003094C065351a9CD7B
+
 Contract: `src/FP1155.sol`
 Tests: `test/FP1155.t.sol`
-Deploy script: `script/Deploy.s.sol`
+Deploy script: `script/DeployUpgradeable.s.sol`
 Server utility: `tools/sign-claim.ts`
 Client utility: `tools/submit-claim.ts`
 
