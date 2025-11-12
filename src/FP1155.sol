@@ -158,6 +158,7 @@ contract FP1155 is Initializable, UUPSUpgradeable, ERC1155Upgradeable, ERC1155Pa
     ) external whenNotPaused {
         require(block.timestamp <= deadline, "claim: expired");
         require(amount > 0, "amount=0");
+        require(_seasonStatus[seasonId] == SeasonStatus.OPEN, "claim: season locked");
 
         uint256 nonce = nonces[msg.sender];
         bytes32 structHash = keccak256(abi.encode(CLAIM_TYPEHASH, msg.sender, seasonId, amount, nonce, deadline));
