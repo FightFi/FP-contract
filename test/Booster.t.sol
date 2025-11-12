@@ -714,6 +714,142 @@ contract BoosterTest is Test {
         booster.addToBoost(EVENT_1, FIGHT_1, 0, 10 ether);
     }
 
+    // ============ Set Event Boost Cutoff Tests ============
+
+    function test_setEventBoostCutoff_allFights() public {
+        _createDefaultEvent();
+        
+        uint256 cutoff = block.timestamp + 100;
+        
+        vm.prank(operator);
+        vm.expectEmit(true, true, false, true);
+        emit Booster.FightBoostCutoffUpdated(EVENT_1, FIGHT_1, cutoff);
+        vm.expectEmit(true, true, false, true);
+        emit Booster.FightBoostCutoffUpdated(EVENT_1, FIGHT_2, cutoff);
+        vm.expectEmit(true, true, false, true);
+        emit Booster.FightBoostCutoffUpdated(EVENT_1, FIGHT_3, cutoff);
+        booster.setEventBoostCutoff(EVENT_1, cutoff);
+
+        // Verify all fights have the cutoff set
+        (,,,,,,,,,, uint256 boostCutoff1,) = booster.getFight(EVENT_1, FIGHT_1);
+        (,,,,,,,,,, uint256 boostCutoff2,) = booster.getFight(EVENT_1, FIGHT_2);
+        (,,,,,,,,,, uint256 boostCutoff3,) = booster.getFight(EVENT_1, FIGHT_3);
+        
+        assertEq(boostCutoff1, cutoff);
+        assertEq(boostCutoff2, cutoff);
+        assertEq(boostCutoff3, cutoff);
+    }
+
+    function test_setEventBoostCutoff_skipsResolvedFights() public {
+        _createDefaultEvent();
+        
+        // Resolve fight 2
+        vm.prank(operator);
+        booster.submitFightResult(EVENT_1, FIGHT_2, Booster.Corner.RED, Booster.WinMethod.KNOCKOUT, 10, 20, 0, 0);
+        
+        uint256 cutoff = block.timestamp + 100;
+        
+        vm.prank(operator);
+        vm.expectEmit(true, true, false, true);
+        emit Booster.FightBoostCutoffUpdated(EVENT_1, FIGHT_1, cutoff);
+        // FIGHT_2 should not emit event (already resolved)
+        vm.expectEmit(true, true, false, true);
+        emit Booster.FightBoostCutoffUpdated(EVENT_1, FIGHT_3, cutoff);
+        booster.setEventBoostCutoff(EVENT_1, cutoff);
+
+        // Verify fight 1 and 3 have cutoff set
+        (,,,,,,,,,, uint256 boostCutoff1,) = booster.getFight(EVENT_1, FIGHT_1);
+        (,,,,,,,,,, uint256 boostCutoff2,) = booster.getFight(EVENT_1, FIGHT_2);
+        (,,,,,,,,,, uint256 boostCutoff3,) = booster.getFight(EVENT_1, FIGHT_3);
+        
+        assertEq(boostCutoff1, cutoff);
+        assertEq(boostCutoff2, 0); // Resolved fight should not be updated
+        assertEq(boostCutoff3, cutoff);
+    }
+
+    function test_setEventBoostCutoff_zeroCutoff() public {
+        _createDefaultEvent();
+        
+        // First set a cutoff
+        uint256 initialCutoff = block.timestamp + 100;
+        vm.prank(operator);
+        booster.setEventBoostCutoff(EVENT_1, initialCutoff);
+        
+        // Then set to 0 (disable cutoff)
+        vm.prank(operator);
+        booster.setEventBoostCutoff(EVENT_1, 0);
+
+        // Verify all fights have cutoff set to 0
+        (,,,,,,,,,, uint256 boostCutoff1,) = booster.getFight(EVENT_1, FIGHT_1);
+        (,,,,,,,,,, uint256 boostCutoff2,) = booster.getFight(EVENT_1, FIGHT_2);
+        (,,,,,,,,,, uint256 boostCutoff3,) = booster.getFight(EVENT_1, FIGHT_3);
+        
+        assertEq(boostCutoff1, 0);
+        assertEq(boostCutoff2, 0);
+        assertEq(boostCutoff3, 0);
+    }
+
+    function test_setEventBoostCutoff_preventsBoostsAfterCutoff() public {
+        _createDefaultEvent();
+        
+        uint256 cutoff = block.timestamp + 10;
+        vm.prank(operator);
+        booster.setEventBoostCutoff(EVENT_1, cutoff);
+        
+        // Advance past cutoff
+        vm.warp(block.timestamp + 11);
+        
+        // Try to place boost on all fights - should fail
+        Booster.BoostInput[] memory boosts1 = new Booster.BoostInput[](1);
+        boosts1[0] = Booster.BoostInput(FIGHT_1, 50 ether, Booster.Corner.RED, Booster.WinMethod.KNOCKOUT);
+        vm.prank(user1);
+        vm.expectRevert("boost cutoff passed");
+        booster.placeBoosts(EVENT_1, boosts1);
+        
+        Booster.BoostInput[] memory boosts2 = new Booster.BoostInput[](1);
+        boosts2[0] = Booster.BoostInput(FIGHT_2, 50 ether, Booster.Corner.RED, Booster.WinMethod.KNOCKOUT);
+        vm.prank(user1);
+        vm.expectRevert("boost cutoff passed");
+        booster.placeBoosts(EVENT_1, boosts2);
+        
+        Booster.BoostInput[] memory boosts3 = new Booster.BoostInput[](1);
+        boosts3[0] = Booster.BoostInput(FIGHT_3, 50 ether, Booster.Corner.RED, Booster.WinMethod.KNOCKOUT);
+        vm.prank(user1);
+        vm.expectRevert("boost cutoff passed");
+        booster.placeBoosts(EVENT_1, boosts3);
+    }
+
+    function testRevert_setEventBoostCutoff_notOperator() public {
+        _createDefaultEvent();
+        
+        vm.prank(user1);
+        vm.expectRevert();
+        booster.setEventBoostCutoff(EVENT_1, block.timestamp + 100);
+    }
+
+    function testRevert_setEventBoostCutoff_eventNotExists() public {
+        vm.prank(operator);
+        vm.expectRevert("event not exists");
+        booster.setEventBoostCutoff("FAKE_EVENT", block.timestamp + 100);
+    }
+
+    function test_setEventBoostCutoff_largeEvent() public {
+        // Create event with many fights
+        vm.prank(operator);
+        booster.createEvent("UFC_301", 10, SEASON_1);
+        
+        uint256 cutoff = block.timestamp + 100;
+        
+        vm.prank(operator);
+        booster.setEventBoostCutoff("UFC_301", cutoff);
+        
+        // Verify all 10 fights have cutoff set
+        for (uint256 i = 1; i <= 10; i++) {
+            (,,,,,,,,,, uint256 boostCutoff,) = booster.getFight("UFC_301", i);
+            assertEq(boostCutoff, cutoff);
+        }
+    }
+
     function testRevert_claimReward_afterDeadline() public {
         _createDefaultEvent();
         Booster.BoostInput[] memory boosts = new Booster.BoostInput[](1);

@@ -244,6 +244,29 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
     }
 
     /**
+     * @notice Set boost cutoff time for all fights in an event
+     * @param eventId Event identifier
+     * @param cutoff Unix timestamp (0 = rely on status only)
+     */
+    function setEventBoostCutoff(
+        string calldata eventId,
+        uint256 cutoff
+    ) external onlyRole(OPERATOR_ROLE) {
+        require(events[eventId].exists, "event not exists");
+        
+        Event storage evt = events[eventId];
+        // Iterate through all fights (fightIds are 1, 2, 3, ..., numFights)
+        for (uint256 i = 1; i <= evt.numFights; i++) {
+            Fight storage fight = fights[eventId][i];
+            // Only set cutoff for fights that are not resolved
+            if (fight.status != FightStatus.RESOLVED) {
+                fight.boostCutoff = cutoff;
+                emit FightBoostCutoffUpdated(eventId, i, cutoff);
+            }
+        }
+    }
+
+    /**
      * @notice Cancel a fight and enable full refunds (no-contest scenario)
      * @param eventId Event identifier
      * @param fightId Fight number
