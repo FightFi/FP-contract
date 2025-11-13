@@ -19,50 +19,49 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
 
     // ============ Types ============
     enum FightStatus {
-        OPEN,     // 0 - Accepting boosts
-        CLOSED,   // 1 - No more boosts, fight ongoing
-        RESOLVED  // 2 - Fight ended, results submitted
+        OPEN, // 0 - Accepting boosts
+        CLOSED, // 1 - No more boosts, fight ongoing
+        RESOLVED // 2 - Fight ended, results submitted
     }
 
     enum WinMethod {
-        KNOCKOUT,    // 0 - KO/TKO
-        SUBMISSION,  // 1 - Submission
-        DECISION,    // 2 - Decision
-        NO_CONTEST   // 3 - No-Contest
+        KNOCKOUT, // 0 - KO/TKO
+        SUBMISSION, // 1 - Submission
+        DECISION, // 2 - Decision
+        NO_CONTEST // 3 - No-Contest
     }
 
     enum Corner {
-        RED,   // 0
-        BLUE,  // 1
-        NONE   // 2 - No winner (e.g., no-contest)
+        RED, // 0
+        BLUE, // 1
+        NONE // 2 - No winner (e.g., no-contest)
     }
 
     struct Fight {
         FightStatus status;
         Corner winner;
         WinMethod method;
-        uint256 bonusPool;              // Manager-deposited bonus FP
-        uint256 originalPool;           // Total user boost stakes
-        uint256 totalWinningPoints;     // Submitted by server after offchain calculation
-        uint256 pointsForWinner;        // Points if you picked correct winner only
-        uint256 pointsForWinnerMethod;  // Points if you picked correct winner AND method
-        uint256 claimedOriginal;        // Track original pool claimed so far
-        uint256 claimedBonus;           // Track bonus pool claimed so far
-        uint256 boostCutoff;            // Unix timestamp after which boosts are rejected (0 = uses status only)
-        bool calculationSubmitted;      // Server has submitted totalWinningPoints
-        bool cancelled;                 // Fight cancelled/no-contest - full refund of principal
+        uint256 bonusPool; // Manager-deposited bonus FP
+        uint256 originalPool; // Total user boost stakes
+        uint256 sumWinnersStakes; // Sum of all winning users' stakes
+        uint256 winningPoolTotalShares; // Total shares (sum of points * stakes for all winners)
+        uint256 pointsForWinner; // Points if you picked correct winner only
+        uint256 pointsForWinnerMethod; // Points if you picked correct winner AND method
+        uint256 claimedAmount; // Amount claimed from the pool so far
+        uint256 boostCutoff; // Unix timestamp after which boosts are rejected (0 = uses status only)
+        bool cancelled; // Fight cancelled/no-contest - full refund of principal
     }
 
     struct Event {
-        uint256 seasonId;        // Which FP season this event uses
-        uint256[] fightIds;      // Fixed array of fight numbers
+        uint256 seasonId; // Which FP season this event uses
+        uint256 numFights; // Number of fights in the event (fights are 1, 2, 3, ..., numFights)
         bool exists;
-        uint256 claimDeadline;   // unix timestamp after which claims are rejected (0 = no limit)
+        uint256 claimDeadline; // unix timestamp after which claims are rejected (0 = no limit)
     }
 
     struct Boost {
         address user;
-        uint256 amount;              // FP staked (can be increased)
+        uint256 amount; // FP staked (can be increased)
         Corner predictedWinner;
         WinMethod predictedMethod;
         bool claimed;
@@ -73,6 +72,11 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
         uint256 amount;
         Corner predictedWinner;
         WinMethod predictedMethod;
+    }
+
+    struct ClaimInput {
+        uint256 fightId;
+        uint256[] boostIndices;
     }
 
     // ============ Storage ============
@@ -94,7 +98,7 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
     mapping(string => mapping(uint256 => mapping(address => uint256[]))) private userBoostIndices;
 
     // ============ Events ============
-    event EventCreated(string indexed eventId, uint256[] fightIds, uint256 seasonId);
+    event EventCreated(string indexed eventId, uint256 numFights, uint256 indexed seasonId);
     event EventClaimDeadlineUpdated(string indexed eventId, uint256 deadline);
     event FightStatusUpdated(string indexed eventId, uint256 indexed fightId, FightStatus status);
     event FightBoostCutoffUpdated(string indexed eventId, uint256 indexed fightId, uint256 cutoff);
@@ -121,11 +125,12 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
     event FightResultSubmitted(
         string indexed eventId,
         uint256 indexed fightId,
-        Corner winner,
+        Corner indexed winner,
         WinMethod method,
         uint256 pointsForWinner,
         uint256 pointsForWinnerMethod,
-        uint256 totalWinningPoints
+        uint256 sumWinnersStakes,
+        uint256 winningPoolTotalShares
     );
     event RewardClaimed(
         string indexed eventId,
@@ -136,13 +141,13 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
         uint256 points
     );
     event EventPurged(string indexed eventId, address indexed recipient, uint256 amount);
-    event FightPurged(string indexed eventId, uint256 indexed fightId, uint256 unclaimedOriginal, uint256 unclaimedBonus);
+    event FightPurged(string indexed eventId, uint256 indexed fightId, uint256 unclaimedPool);
 
     // ============ Constructor ============
     constructor(address _fp, address admin) {
         require(_fp != address(0), "fp=0");
         require(admin != address(0), "admin=0");
-        
+
         FP = FP1155(_fp);
         minBoostAmount = 0; // Default: no minimum
         _grantRole(DEFAULT_ADMIN_ROLE, admin);
@@ -163,34 +168,28 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
     /**
      * @notice Create a new event with multiple fights
      * @param eventId Unique identifier for the event (e.g., "UFC_300")
-     * @param fightIds Array of fight numbers (immutable after creation)
+     * @param numFights Number of fights in the event (fights are 1, 2, 3, ..., numFights)
      * @param seasonId Which FP season this event uses
      */
-    function createEvent(
-        string calldata eventId,
-        uint256[] calldata fightIds,
-        uint256 seasonId
-    ) external onlyRole(OPERATOR_ROLE) {
+    function createEvent(string calldata eventId, uint256 numFights, uint256 seasonId)
+        external
+        onlyRole(OPERATOR_ROLE)
+    {
         require(!events[eventId].exists, "event exists");
-        require(fightIds.length > 0, "no fights");
+        require(numFights > 0, "no fights");
 
         // Verify season is valid and open
-    require(FP.seasonStatus(seasonId) == FP1155.SeasonStatus.OPEN, "season not open");
+        require(FP.seasonStatus(seasonId) == FP1155.SeasonStatus.OPEN, "season not open");
 
         // Create event
-        events[eventId] = Event({
-            seasonId: seasonId,
-            fightIds: fightIds,
-            exists: true,
-            claimDeadline: 0
-        });
+        events[eventId] = Event({seasonId: seasonId, numFights: numFights, exists: true, claimDeadline: 0});
 
-        // Initialize all fights as OPEN
-        for (uint256 i = 0; i < fightIds.length; i++) {
-            fights[eventId][fightIds[i]].status = FightStatus.OPEN;
+        // Initialize all fights as OPEN (fightIds are 1, 2, 3, ..., numFights)
+        for (uint256 i = 1; i <= numFights; i++) {
+            fights[eventId][i].status = FightStatus.OPEN;
         }
 
-        emit EventCreated(eventId, fightIds, seasonId);
+        emit EventCreated(eventId, numFights, seasonId);
     }
 
     /**
@@ -199,13 +198,12 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
      * @param fightId Fight number
      * @param newStatus New status (can only move forward)
      */
-    function updateFightStatus(
-        string calldata eventId,
-        uint256 fightId,
-        FightStatus newStatus
-    ) external onlyRole(OPERATOR_ROLE) {
+    function updateFightStatus(string calldata eventId, uint256 fightId, FightStatus newStatus)
+        external
+        onlyRole(OPERATOR_ROLE)
+    {
         require(events[eventId].exists, "event not exists");
-        
+
         Fight storage fight = fights[eventId][fightId];
         FightStatus currentStatus = fight.status;
 
@@ -225,17 +223,36 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
      * @param fightId Fight number
      * @param cutoff Unix timestamp (0 = rely on status only)
      */
-    function setFightBoostCutoff(
-        string calldata eventId,
-        uint256 fightId,
-        uint256 cutoff
-    ) external onlyRole(OPERATOR_ROLE) {
+    function setFightBoostCutoff(string calldata eventId, uint256 fightId, uint256 cutoff)
+        external
+        onlyRole(OPERATOR_ROLE)
+    {
         require(events[eventId].exists, "event not exists");
         Fight storage fight = fights[eventId][fightId];
         require(fight.status != FightStatus.RESOLVED, "fight resolved");
-        
+
         fight.boostCutoff = cutoff;
         emit FightBoostCutoffUpdated(eventId, fightId, cutoff);
+    }
+
+    /**
+     * @notice Set boost cutoff time for all fights in an event
+     * @param eventId Event identifier
+     * @param cutoff Unix timestamp (0 = rely on status only)
+     */
+    function setEventBoostCutoff(string calldata eventId, uint256 cutoff) external onlyRole(OPERATOR_ROLE) {
+        require(events[eventId].exists, "event not exists");
+
+        Event storage evt = events[eventId];
+        // Iterate through all fights (fightIds are 1, 2, 3, ..., numFights)
+        for (uint256 i = 1; i <= evt.numFights; i++) {
+            Fight storage fight = fights[eventId][i];
+            // Only set cutoff for fights that are not resolved
+            if (fight.status != FightStatus.RESOLVED) {
+                fight.boostCutoff = cutoff;
+                emit FightBoostCutoffUpdated(eventId, i, cutoff);
+            }
+        }
     }
 
     /**
@@ -243,20 +260,67 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
      * @param eventId Event identifier
      * @param fightId Fight number
      */
-    function cancelFight(
-        string calldata eventId,
-        uint256 fightId
-    ) external onlyRole(OPERATOR_ROLE) {
+    function cancelFight(string calldata eventId, uint256 fightId) external onlyRole(OPERATOR_ROLE) {
         require(events[eventId].exists, "event not exists");
         Fight storage fight = fights[eventId][fightId];
         require(fight.status != FightStatus.RESOLVED, "fight already resolved");
-        
+
         fight.status = FightStatus.RESOLVED;
         fight.cancelled = true;
         fight.winner = Corner.NONE;
         fight.method = WinMethod.NO_CONTEST;
-        
+
         emit FightCancelled(eventId, fightId);
+    }
+
+    /**
+     * @notice Set or update the claim deadline for an event (0 disables deadline)
+     * @dev Non-decreasing: if already set, new value must be >= current
+     */
+    function setEventClaimDeadline(string calldata eventId, uint256 deadline) external onlyRole(OPERATOR_ROLE) {
+        require(events[eventId].exists, "event not exists");
+        uint256 current = events[eventId].claimDeadline;
+        if (current != 0) {
+            require(deadline == 0 || deadline >= current, "deadline decrease");
+        }
+        events[eventId].claimDeadline = deadline;
+        emit EventClaimDeadlineUpdated(eventId, deadline);
+    }
+
+    /**
+     * @notice Purge unclaimed funds for all resolved fights in an event after deadline
+     * @param eventId Event identifier
+     * @param recipient Address to receive swept unclaimed FP
+     */
+    function purgeEvent(string calldata eventId, address recipient) external onlyRole(OPERATOR_ROLE) nonReentrant {
+        require(events[eventId].exists, "event not exists");
+        require(recipient != address(0), "recipient=0");
+        uint256 deadline = events[eventId].claimDeadline;
+        require(deadline != 0 && block.timestamp > deadline, "deadline not passed");
+
+        Event storage evt = events[eventId];
+        uint256 totalSweep = 0;
+        // Iterate through all fights (fightIds are 1, 2, 3, ..., numFights)
+        for (uint256 i = 1; i <= evt.numFights; i++) {
+            Fight storage fight = fights[eventId][i];
+            if (fight.status == FightStatus.RESOLVED) {
+                uint256 poolAmount = fight.originalPool + fight.bonusPool;
+                if (poolAmount == 0) continue;
+
+                uint256 unclaimedPool = poolAmount - fight.claimedAmount;
+
+                if (unclaimedPool > 0) {
+                    emit FightPurged(eventId, i, unclaimedPool);
+                    totalSweep += unclaimedPool;
+                    fight.claimedAmount = poolAmount;
+                }
+            }
+        }
+
+        if (totalSweep > 0) {
+            FP.safeTransferFrom(address(this), recipient, evt.seasonId, totalSweep, "");
+        }
+        emit EventPurged(eventId, recipient, totalSweep);
     }
 
     // ============ Manager Functions ============
@@ -267,11 +331,11 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
      * @param fightId Fight number
      * @param amount Amount of FP to deposit as bonus
      */
-    function depositBonus(
-        string calldata eventId,
-        uint256 fightId,
-        uint256 amount
-    ) external onlyRole(OPERATOR_ROLE) nonReentrant {
+    function depositBonus(string calldata eventId, uint256 fightId, uint256 amount)
+        external
+        onlyRole(OPERATOR_ROLE)
+        nonReentrant
+    {
         require(events[eventId].exists, "event not exists");
         require(amount > 0, "amount=0");
 
@@ -281,7 +345,7 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
         uint256 seasonId = events[eventId].seasonId;
 
         // Pull FP from manager
-    FP.agentTransferFrom(msg.sender, address(this), seasonId, amount, "");
+        FP.agentTransferFrom(msg.sender, address(this), seasonId, amount, "");
 
         fight.bonusPool += amount;
         emit BonusDeposited(eventId, fightId, msg.sender, amount);
@@ -297,7 +361,8 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
      * @param method How they won
      * @param pointsForWinner Points awarded for correct winner only
      * @param pointsForWinnerMethod Points awarded for correct winner AND method
-     * @param totalWinningPoints Sum of all winning users' points (calculated offchain)
+     * @param sumWinnersStakes Sum of all winning users' stakes
+     * @param winningPoolTotalShares Total shares (sum of points * stakes for all winners)
      */
     function submitFightResult(
         string calldata eventId,
@@ -306,15 +371,15 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
         WinMethod method,
         uint256 pointsForWinner,
         uint256 pointsForWinnerMethod,
-        uint256 totalWinningPoints
+        uint256 sumWinnersStakes,
+        uint256 winningPoolTotalShares
     ) external onlyRole(OPERATOR_ROLE) {
         require(events[eventId].exists, "event not exists");
-        require(totalWinningPoints > 0, "no winners");
-        
+
         // Validate points parameters
         require(pointsForWinner > 0, "points for winner must be > 0");
         require(pointsForWinnerMethod >= pointsForWinner, "method points must be >= winner points");
-        
+
         // Validate winner/method consistency
         if (winner == Corner.NONE) {
             require(method == WinMethod.NO_CONTEST, "NONE winner requires NO_CONTEST method");
@@ -330,8 +395,8 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
         fight.method = method;
         fight.pointsForWinner = pointsForWinner;
         fight.pointsForWinnerMethod = pointsForWinnerMethod;
-        fight.totalWinningPoints = totalWinningPoints;
-        fight.calculationSubmitted = true;
+        fight.sumWinnersStakes = sumWinnersStakes;
+        fight.winningPoolTotalShares = winningPoolTotalShares;
 
         emit FightResultSubmitted(
             eventId,
@@ -340,7 +405,8 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
             method,
             pointsForWinner,
             pointsForWinnerMethod,
-            totalWinningPoints
+            sumWinnersStakes,
+            winningPoolTotalShares
         );
     }
 
@@ -351,14 +417,12 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
      * @param eventId Event identifier
      * @param inputs Array of boost inputs
      */
-    function placeBoosts(
-        string calldata eventId,
-        BoostInput[] calldata inputs
-    ) external nonReentrant {
+    function placeBoosts(string calldata eventId, BoostInput[] calldata inputs) external nonReentrant {
         require(events[eventId].exists, "event not exists");
         require(inputs.length > 0, "no boosts");
 
-        uint256 seasonId = events[eventId].seasonId;
+        Event storage evt = events[eventId];
+        uint256 seasonId = evt.seasonId;
         uint256 totalAmount = 0;
 
         for (uint256 i = 0; i < inputs.length; i++) {
@@ -366,10 +430,13 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
             require(input.amount > 0, "amount=0");
             require(input.amount >= minBoostAmount, "below min boost");
 
+            // Validate that fightId exists in the event (O(1) range check: fights are 1, 2, 3, ..., numFights)
+            require(input.fightId >= 1 && input.fightId <= evt.numFights, "fightId not in event");
+
             Fight storage fight = fights[eventId][input.fightId];
             require(fight.status == FightStatus.OPEN, "fight not open");
             require(!fight.cancelled, "fight cancelled");
-            
+
             // Check boost cutoff if set
             if (fight.boostCutoff > 0) {
                 require(block.timestamp < fight.boostCutoff, "boost cutoff passed");
@@ -413,20 +480,21 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
      * @param boostIndex Index of the boost to increase
      * @param additionalAmount Amount of FP to add
      */
-    function addToBoost(
-        string calldata eventId,
-        uint256 fightId,
-        uint256 boostIndex,
-        uint256 additionalAmount
-    ) external nonReentrant {
+    function addToBoost(string calldata eventId, uint256 fightId, uint256 boostIndex, uint256 additionalAmount)
+        external
+        nonReentrant
+    {
         require(events[eventId].exists, "event not exists");
         require(additionalAmount > 0, "amount=0");
         require(additionalAmount >= minBoostAmount, "below min boost");
 
+        Event storage evt = events[eventId];
+        require(fightId >= 1 && fightId <= evt.numFights, "fightId not in event");
+
         Fight storage fight = fights[eventId][fightId];
         require(fight.status == FightStatus.OPEN, "fight not open");
         require(!fight.cancelled, "fight cancelled");
-        
+
         // Check boost cutoff if set
         if (fight.boostCutoff > 0) {
             require(block.timestamp < fight.boostCutoff, "boost cutoff passed");
@@ -451,98 +519,110 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
     }
 
     /**
-     * @notice Claim rewards for all resolved fights in an event
-     * @dev Automatically claims all unclaimed winning boosts across all fights for the caller
+     * @notice Claim rewards for winning boosts
      * @param eventId Event identifier
+     * @param fightId Fight number
+     * @param boostIndices Array of boost indices to claim
      */
-    function claimReward(string calldata eventId) external nonReentrant {
+    function claimReward(string calldata eventId, uint256 fightId, uint256[] calldata boostIndices)
+        external
+        nonReentrant
+    {
+        require(events[eventId].exists, "event not exists");
+
         Event storage evt = events[eventId];
-        require(evt.exists, "event not exists");
-        
+        require(fightId >= 1 && fightId <= evt.numFights, "fightId not in event");
+
+        uint256 deadline = evt.claimDeadline;
+        require(deadline == 0 || block.timestamp <= deadline, "claim deadline passed");
+
+        Fight storage fight = fights[eventId][fightId];
+        require(fight.status == FightStatus.RESOLVED, "not resolved");
+
+        uint256 seasonId = evt.seasonId;
+        Boost[] storage fightBoosts = boosts[eventId][fightId];
+
+        // Handle cancelled fight (full refund of principal)
+        if (fight.cancelled) {
+            uint256 refund = _processCancelledBoostRefund(fightBoosts, boostIndices, msg.sender);
+
+            require(refund > 0, "nothing to refund");
+            FP.safeTransferFrom(address(this), msg.sender, seasonId, refund, "");
+            return;
+        }
+
+        // Normal claim flow (winning boosts)
+        // If no winners, no one can claim rewards (check early to avoid unnecessary computation)
+        require(fight.sumWinnersStakes > 0 && fight.winningPoolTotalShares > 0, "no winners");
+        uint256 totalPayout = 0;
+
+        uint256 prizePool = fight.originalPool - fight.sumWinnersStakes + fight.bonusPool;
+
+        for (uint256 i = 0; i < boostIndices.length; i++) {
+            totalPayout += _processWinningBoostClaim(
+                eventId, fightId, fight, fightBoosts, boostIndices[i], msg.sender, prizePool
+            );
+        }
+
+        // Transfer total payout to user
+        if (totalPayout > 0) {
+            FP.safeTransferFrom(address(this), msg.sender, seasonId, totalPayout, "");
+        }
+    }
+
+    /**
+     * @notice Claim rewards for winning boosts across multiple fights in a single transaction
+     * @param eventId Event identifier
+     * @param inputs Array of claim inputs, each containing a fightId and boost indices
+     */
+    function claimRewards(string calldata eventId, ClaimInput[] calldata inputs) external nonReentrant {
+        require(events[eventId].exists, "event not exists");
+        require(inputs.length > 0, "no claims");
+
+        Event storage evt = events[eventId];
         uint256 deadline = evt.claimDeadline;
         require(deadline == 0 || block.timestamp <= deadline, "claim deadline passed");
 
         uint256 seasonId = evt.seasonId;
         uint256 totalPayout = 0;
-        uint256[] memory fightIds = evt.fightIds;
 
-        // Iterate through all fights in the event
-        for (uint256 f = 0; f < fightIds.length; f++) {
-            uint256 fightId = fightIds[f];
-            Fight storage fight = fights[eventId][fightId];
+        for (uint256 j = 0; j < inputs.length; j++) {
+            ClaimInput calldata input = inputs[j];
+            require(input.fightId >= 1 && input.fightId <= evt.numFights, "fightId not in event");
+            require(input.boostIndices.length > 0, "no boost indices");
 
-            // Skip unresolved fights
-            if (fight.status != FightStatus.RESOLVED) {
-                continue;
-            }
+            Fight storage fight = fights[eventId][input.fightId];
+            require(fight.status == FightStatus.RESOLVED, "not resolved");
 
-            uint256[] storage indices = userBoostIndices[eventId][fightId][msg.sender];
-            if (indices.length == 0) {
-                continue; // User has no boosts for this fight
-            }
-
-            Boost[] storage fightBoosts = boosts[eventId][fightId];
+            Boost[] storage fightBoosts = boosts[eventId][input.fightId];
 
             // Handle cancelled fight (full refund of principal)
             if (fight.cancelled) {
-                for (uint256 i = 0; i < indices.length; i++) {
-                    uint256 index = indices[i];
-                    Boost storage boost = fightBoosts[index];
-                    
-                    if (boost.claimed) continue;
-                    
-                    totalPayout += boost.amount;
-                    boost.claimed = true;
-                    
-                    emit RewardClaimed(eventId, fightId, msg.sender, index, boost.amount, 0);
+                uint256 refund = _processCancelledBoostRefund(fightBoosts, input.boostIndices, msg.sender);
+
+                if (refund > 0) {
+                    totalPayout += refund;
                 }
                 continue;
             }
 
             // Normal claim flow (winning boosts)
-            if (!fight.calculationSubmitted) {
-                continue; // Skip if calculation not submitted yet
+            // If no winners, skip this fight
+            if (fight.sumWinnersStakes == 0 || fight.winningPoolTotalShares == 0) {
+                continue;
             }
 
-            for (uint256 i = 0; i < indices.length; i++) {
-                uint256 index = indices[i];
-                Boost storage boost = fightBoosts[index];
-                
-                if (boost.claimed) continue;
+            uint256 prizePool = fight.originalPool - fight.sumWinnersStakes + fight.bonusPool;
 
-                // Calculate points for this boost
-                uint256 points = calculateUserPoints(
-                    boost.predictedWinner,
-                    boost.predictedMethod,
-                    fight.winner,
-                    fight.method,
-                    fight.pointsForWinner,
-                    fight.pointsForWinnerMethod
+            for (uint256 i = 0; i < input.boostIndices.length; i++) {
+                totalPayout += _processWinningBoostClaim(
+                    eventId, input.fightId, fight, fightBoosts, input.boostIndices[i], msg.sender, prizePool
                 );
-
-                if (points == 0) continue; // Skip losing boosts
-
-                // Calculate payout: (points / totalPoints) * totalPool
-                uint256 pool = fight.originalPool + fight.bonusPool;
-                uint256 payout = (points * pool) / fight.totalWinningPoints;
-
-                boost.claimed = true;
-                totalPayout += payout;
-
-                // Track claimed amounts by pool type
-                uint256 shareOfOriginal = (points * fight.originalPool) / fight.totalWinningPoints;
-                uint256 shareOfBonus = (points * fight.bonusPool) / fight.totalWinningPoints;
-                
-                fight.claimedOriginal += shareOfOriginal;
-                fight.claimedBonus += shareOfBonus;
-
-                emit RewardClaimed(eventId, fightId, msg.sender, index, payout, points);
             }
         }
 
-        require(totalPayout > 0, "nothing to claim");
-
         // Transfer total payout to user
+        require(totalPayout > 0, "nothing to claim");
         FP.safeTransferFrom(address(this), msg.sender, seasonId, totalPayout, "");
     }
 
@@ -552,16 +632,16 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
      * @notice Get event details
      * @param eventId Event identifier
      * @return seasonId The FP season for this event
-     * @return fightIds Array of fight numbers
+     * @return numFights Number of fights in the event (fights are 1, 2, 3, ..., numFights)
      * @return exists Whether the event exists
      */
     function getEvent(string calldata eventId)
         external
         view
-        returns (uint256 seasonId, uint256[] memory fightIds, bool exists)
+        returns (uint256 seasonId, uint256 numFights, bool exists)
     {
         Event storage evt = events[eventId];
-        return (evt.seasonId, evt.fightIds, evt.exists);
+        return (evt.seasonId, evt.numFights, evt.exists);
     }
 
     /**
@@ -569,55 +649,6 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
      */
     function getEventClaimDeadline(string calldata eventId) external view returns (uint256) {
         return events[eventId].claimDeadline;
-    }
-
-    /**
-     * @notice Set or update the claim deadline for an event (0 disables deadline)
-     * @dev Non-decreasing: if already set, new value must be >= current
-     */
-    function setEventClaimDeadline(string calldata eventId, uint256 deadline) external onlyRole(OPERATOR_ROLE) {
-        require(events[eventId].exists, "event not exists");
-        uint256 current = events[eventId].claimDeadline;
-        if (current != 0) {
-            require(deadline == 0 || deadline >= current, "deadline decrease");
-        }
-        events[eventId].claimDeadline = deadline;
-        emit EventClaimDeadlineUpdated(eventId, deadline);
-    }
-
-    /**
-     * @notice Purge unclaimed funds for all resolved fights in an event after deadline
-     * @param eventId Event identifier
-     * @param recipient Address to receive swept unclaimed FP
-     */
-    function purgeEvent(string calldata eventId, address recipient) external onlyRole(OPERATOR_ROLE) nonReentrant {
-        require(events[eventId].exists, "event not exists");
-        require(recipient != address(0), "recipient=0");
-        uint256 deadline = events[eventId].claimDeadline;
-        require(deadline != 0 && block.timestamp > deadline, "deadline not passed");
-
-        Event storage evt = events[eventId];
-        uint256 totalSweep = 0;
-        uint256[] storage fightIds = evt.fightIds;
-        for (uint256 i = 0; i < fightIds.length; i++) {
-            uint256 fid = fightIds[i];
-            Fight storage fight = fights[eventId][fid];
-            if (fight.status == FightStatus.RESOLVED) {
-                uint256 unclaimedOriginal = fight.originalPool - fight.claimedOriginal;
-                uint256 unclaimedBonus = fight.bonusPool - fight.claimedBonus;
-                if (unclaimedOriginal > 0 || unclaimedBonus > 0) {
-                    emit FightPurged(eventId, fid, unclaimedOriginal, unclaimedBonus);
-                    totalSweep += unclaimedOriginal + unclaimedBonus;
-                    fight.claimedOriginal = fight.originalPool;
-                    fight.claimedBonus = fight.bonusPool;
-                }
-            }
-        }
-
-        if (totalSweep > 0) {
-            FP.safeTransferFrom(address(this), recipient, evt.seasonId, totalSweep, "");
-        }
-        emit EventPurged(eventId, recipient, totalSweep);
     }
 
     /**
@@ -629,13 +660,12 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
      * @return method Win method (if resolved)
      * @return bonusPool Manager bonus pool
      * @return originalPool User stakes pool
-     * @return totalWinningPoints Total winning points
+     * @return sumWinnersStakes Sum of all winning users' stakes
+     * @return winningPoolTotalShares Total shares (sum of points * stakes for all winners)
      * @return pointsForWinner Points for correct winner
      * @return pointsForWinnerMethod Points for correct winner+method
-     * @return claimedOriginal Original pool claimed so far
-     * @return claimedBonus Bonus pool claimed so far
+     * @return claimedAmount Amount claimed from the pool so far
      * @return boostCutoff Boost cutoff timestamp
-     * @return calculationSubmitted Whether calculation is submitted
      * @return cancelled Whether fight is cancelled (refund mode)
      */
     function getFight(string calldata eventId, uint256 fightId)
@@ -647,13 +677,12 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
             WinMethod method,
             uint256 bonusPool,
             uint256 originalPool,
-            uint256 totalWinningPoints,
+            uint256 sumWinnersStakes,
+            uint256 winningPoolTotalShares,
             uint256 pointsForWinner,
             uint256 pointsForWinnerMethod,
-            uint256 claimedOriginal,
-            uint256 claimedBonus,
+            uint256 claimedAmount,
             uint256 boostCutoff,
-            bool calculationSubmitted,
             bool cancelled
         )
     {
@@ -664,13 +693,12 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
             fight.method,
             fight.bonusPool,
             fight.originalPool,
-            fight.totalWinningPoints,
+            fight.sumWinnersStakes,
+            fight.winningPoolTotalShares,
             fight.pointsForWinner,
             fight.pointsForWinnerMethod,
-            fight.claimedOriginal,
-            fight.claimedBonus,
+            fight.claimedAmount,
             fight.boostCutoff,
-            fight.calculationSubmitted,
             fight.cancelled
         );
     }
@@ -700,12 +728,12 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
     {
         uint256[] storage indices = userBoostIndices[eventId][fightId][user];
         Boost[] storage allBoosts = boosts[eventId][fightId];
-        
+
         Boost[] memory userBoosts = new Boost[](indices.length);
         for (uint256 i = 0; i < indices.length; i++) {
             userBoosts[i] = allBoosts[indices[i]];
         }
-        
+
         return userBoosts;
     }
 
@@ -719,25 +747,28 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
      * @param user User address
      * @param enforceDeadline Whether to revert if claim deadline passed
      */
-    function quoteClaimable(
-        string calldata eventId,
-        uint256 fightId,
-        address user,
-        bool enforceDeadline
-    ) external view returns (uint256 totalClaimable, uint256 originalShare, uint256 bonusShare) {
+    function quoteClaimable(string calldata eventId, uint256 fightId, address user, bool enforceDeadline)
+        external
+        view
+        returns (uint256 totalClaimable)
+    {
         Event storage evt = events[eventId];
         require(evt.exists, "event not exists");
         Fight storage fight = fights[eventId][fightId];
         require(fight.status == FightStatus.RESOLVED, "not resolved");
-        require(fight.calculationSubmitted, "calculation not submitted");
 
         if (enforceDeadline) {
             uint256 deadline = evt.claimDeadline;
             require(deadline == 0 || block.timestamp <= deadline, "claim deadline passed");
         }
+        totalClaimable = 0;
+        // If no winners, return zeros
+        if (fight.sumWinnersStakes == 0 || fight.winningPoolTotalShares == 0) {
+            return totalClaimable;
+        }
 
         uint256[] storage indices = userBoostIndices[eventId][fightId][user];
-        uint256 pool = fight.originalPool + fight.bonusPool;
+        uint256 prizePool = fight.originalPool - fight.sumWinnersStakes + fight.bonusPool;
         for (uint256 i = 0; i < indices.length; i++) {
             Boost storage boost = boosts[eventId][fightId][indices[i]];
             if (boost.claimed) continue;
@@ -751,13 +782,14 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
                 fight.pointsForWinnerMethod
             );
             if (points == 0) continue; // losing boost
-            uint256 payout = (points * pool) / fight.totalWinningPoints;
-            uint256 payOriginal = (points * fight.originalPool) / fight.totalWinningPoints;
-            uint256 payBonus = (points * fight.bonusPool) / fight.totalWinningPoints;
+            // Calculate winnings from the pool based on points and stakes
+            // Formula: (points * boost.amount * prizePool) / winningPoolTotalShares
+            uint256 userShares = points * boost.amount;
+            uint256 userWinnings = (prizePool * userShares) / fight.winningPoolTotalShares;
+            uint256 payout = boost.amount + userWinnings;
             totalClaimable += payout;
-            originalShare += payOriginal;
-            bonusShare += payBonus;
         }
+        return totalClaimable;
     }
 
     /**
@@ -808,13 +840,86 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
         return pointsForWinner;
     }
 
-    // ============ Interface Support ============
-    function supportsInterface(bytes4 interfaceId)
-        public
-        view
-        override(AccessControl, ERC1155Holder)
-        returns (bool)
+    // ============ Internal Helper Functions ============
+
+    /**
+     * @notice Process refund for cancelled fight boosts
+     * @param fightBoosts Array of boosts for the fight
+     * @param boostIndices Array of boost indices to refund
+     * @param user Address claiming the refund
+     * @return refund Total refund amount
+     */
+    function _processCancelledBoostRefund(Boost[] storage fightBoosts, uint256[] calldata boostIndices, address user)
+        internal
+        returns (uint256 refund)
     {
+        refund = 0;
+        for (uint256 i = 0; i < boostIndices.length; i++) {
+            uint256 index = boostIndices[i];
+            require(index < fightBoosts.length, "invalid boost index");
+
+            Boost storage boost = fightBoosts[index];
+            require(boost.user == user, "not boost owner");
+            require(!boost.claimed, "already claimed");
+
+            refund += boost.amount;
+            boost.claimed = true;
+        }
+    }
+
+    /**
+     * @notice Process claim for a winning boost
+     * @param eventId Event identifier
+     * @param fightId Fight number
+     * @param fight Fight storage reference
+     * @param fightBoosts Array of boosts for the fight
+     * @param boostIndex Index of the boost to claim
+     * @param user Address claiming the reward
+     * @param prizePool Prize pool (original + bonus) for the fight
+     * @return payout Payout amount for this boost
+     */
+    function _processWinningBoostClaim(
+        string calldata eventId,
+        uint256 fightId,
+        Fight storage fight,
+        Boost[] storage fightBoosts,
+        uint256 boostIndex,
+        address user,
+        uint256 prizePool
+    ) internal returns (uint256 payout) {
+        require(boostIndex < fightBoosts.length, "invalid boost index");
+
+        Boost storage boost = fightBoosts[boostIndex];
+        require(boost.user == user, "not boost owner");
+        require(!boost.claimed, "already claimed");
+
+        // Calculate points for this boost
+        uint256 points = calculateUserPoints(
+            boost.predictedWinner,
+            boost.predictedMethod,
+            fight.winner,
+            fight.method,
+            fight.pointsForWinner,
+            fight.pointsForWinnerMethod
+        );
+
+        require(points > 0, "boost did not win");
+
+        // Calculate winnings from the pool based on points and stakes
+        // Formula: (points * boost.amount * prizePool) / winningPoolTotalShares
+        uint256 userShares = points * boost.amount;
+        uint256 winnings = (prizePool * userShares) / fight.winningPoolTotalShares;
+        payout = winnings + boost.amount;
+
+        boost.claimed = true;
+
+        fight.claimedAmount += payout;
+
+        emit RewardClaimed(eventId, fightId, user, boostIndex, payout, points);
+    }
+
+    // ============ Interface Support ============
+    function supportsInterface(bytes4 interfaceId) public view override(AccessControl, ERC1155Holder) returns (bool) {
         return super.supportsInterface(interfaceId);
     }
 }

@@ -23,8 +23,8 @@ contract FP1155 is ERC1155, ERC1155Pausable, ERC1155Burnable, AccessControl, EIP
 
     // ============ Types ============
     enum SeasonStatus {
-        OPEN,   // 0
-        LOCKED  // 1
+        OPEN, // 0
+        LOCKED // 1
     }
 
     // ============ Storage ============
@@ -34,9 +34,8 @@ contract FP1155 is ERC1155, ERC1155Pausable, ERC1155Burnable, AccessControl, EIP
     mapping(address => uint256) public nonces; // per-user monotonically increasing nonce
 
     // EIP-712 typehash for claim typed struct
-    bytes32 public constant CLAIM_TYPEHASH = keccak256(
-        "Claim(address account,uint256 seasonId,uint256 amount,uint256 nonce,uint256 deadline)"
-    );
+    bytes32 public constant CLAIM_TYPEHASH =
+        keccak256("Claim(address account,uint256 seasonId,uint256 amount,uint256 nonce,uint256 deadline)");
 
     // ============ Events ============
     event SeasonStatusUpdated(uint256 indexed seasonId, SeasonStatus status);
@@ -107,10 +106,7 @@ contract FP1155 is ERC1155, ERC1155Pausable, ERC1155Burnable, AccessControl, EIP
     }
 
     // ============ Mint API ============
-    function mint(address to, uint256 seasonId, uint256 amount, bytes memory data)
-        external
-        onlyRole(MINTER_ROLE)
-    {
+    function mint(address to, uint256 seasonId, uint256 amount, bytes memory data) external onlyRole(MINTER_ROLE) {
         require(amount > 0, "amount=0");
         _mint(to, seasonId, amount, data);
     }
@@ -134,12 +130,10 @@ contract FP1155 is ERC1155, ERC1155Pausable, ERC1155Burnable, AccessControl, EIP
      * @param deadline unix timestamp after which claim is invalid
      * @param signature EIP-712 signature from an address with CLAIM_SIGNER_ROLE over Claim struct
      */
-    function claim(
-        uint256 seasonId,
-        uint256 amount,
-        uint256 deadline,
-        bytes calldata signature
-    ) external whenNotPaused {
+    function claim(uint256 seasonId, uint256 amount, uint256 deadline, bytes calldata signature)
+        external
+        whenNotPaused
+    {
         require(block.timestamp <= deadline, "claim: expired");
         require(amount > 0, "amount=0");
 
@@ -163,13 +157,11 @@ contract FP1155 is ERC1155, ERC1155Pausable, ERC1155Burnable, AccessControl, EIP
      *      - Both endpoints must be allowed via allowlist or TRANSFER_AGENT_ROLE
      *      Reverts with the same errors as a normal transfer if conditions fail.
      */
-    function agentTransferFrom(
-        address from,
-        address to,
-        uint256 seasonId,
-        uint256 amount,
-        bytes calldata data
-    ) external whenNotPaused onlyRole(TRANSFER_AGENT_ROLE) {
+    function agentTransferFrom(address from, address to, uint256 seasonId, uint256 amount, bytes calldata data)
+        external
+        whenNotPaused
+        onlyRole(TRANSFER_AGENT_ROLE)
+    {
         require(amount > 0, "amount=0");
         // Bypass external approval requirement by calling internal transfer
         _safeTransferFrom(from, to, seasonId, amount, data);
@@ -182,12 +174,10 @@ contract FP1155 is ERC1155, ERC1155Pausable, ERC1155Burnable, AccessControl, EIP
 
     // ============ Transfer Guard ============
     // OZ v5.1 uses _update as the transfer/mint/burn hook.
-    function _update(
-        address from,
-        address to,
-        uint256[] memory ids,
-        uint256[] memory values
-    ) internal override(ERC1155, ERC1155Pausable) {
+    function _update(address from, address to, uint256[] memory ids, uint256[] memory values)
+        internal
+        override(ERC1155, ERC1155Pausable)
+    {
         // Enforce season + allowlist rules per token id
         uint256 len = ids.length;
         for (uint256 i = 0; i < len; i++) {
@@ -207,12 +197,7 @@ contract FP1155 is ERC1155, ERC1155Pausable, ERC1155Burnable, AccessControl, EIP
     }
 
     // ============ Interface Support ============
-    function supportsInterface(bytes4 interfaceId)
-        public
-        view
-        override(ERC1155, AccessControl)
-        returns (bool)
-    {
+    function supportsInterface(bytes4 interfaceId) public view override(ERC1155, AccessControl) returns (bool) {
         return super.supportsInterface(interfaceId);
     }
 }

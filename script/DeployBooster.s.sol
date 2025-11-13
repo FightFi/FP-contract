@@ -57,31 +57,37 @@ contract DeployBooster is Script {
         {
             string memory raw = vm.envOr("ALLOWLIST_USERS", string(""));
             if (bytes(raw).length > 0) {
-            // Simple parsing: split by comma
-            uint256 count = 1;
-            for (uint256 i = 0; i < bytes(raw).length; i++) {
-                if (bytes(raw)[i] == ",") count++;
-            }
-            address[] memory addrs = new address[](count);
-            uint256 idx = 0; uint256 start = 0;
-            for (uint256 i = 0; i <= bytes(raw).length; i++) {
-                if (i == bytes(raw).length || bytes(raw)[i] == ",") {
-                    bytes memory slice = new bytes(i - start);
-                    for (uint256 j = start; j < i; j++) slice[j - start] = bytes(raw)[j];
-                    addrs[idx] = vm.parseAddress(string(slice));
-                    idx++; start = i + 1;
+                // Simple parsing: split by comma
+                uint256 count = 1;
+                for (uint256 i = 0; i < bytes(raw).length; i++) {
+                    if (bytes(raw)[i] == ",") count++;
                 }
-            }
-            for (uint256 k = 0; k < addrs.length; k++) {
-                fp.setTransferAllowlist(addrs[k], true);
-                console2.log("Allowlisted user:", addrs[k]);
-            }
+                address[] memory addrs = new address[](count);
+                uint256 idx = 0;
+                uint256 start = 0;
+                for (uint256 i = 0; i <= bytes(raw).length; i++) {
+                    if (i == bytes(raw).length || bytes(raw)[i] == ",") {
+                        bytes memory slice = new bytes(i - start);
+                        for (uint256 j = start; j < i; j++) {
+                            slice[j - start] = bytes(raw)[j];
+                        }
+                        addrs[idx] = vm.parseAddress(string(slice));
+                        idx++;
+                        start = i + 1;
+                    }
+                }
+                for (uint256 k = 0; k < addrs.length; k++) {
+                    fp.setTransferAllowlist(addrs[k], true);
+                    console2.log("Allowlisted user:", addrs[k]);
+                }
             }
         }
 
         // Optionally set a global claim deadline for an event after creation (not created here).
         if (deadlineOffset > 0) {
-            console2.log("NOTE: deadlineOffset provided but no event created in this script. Use a separate script to create events and set deadlines.");
+            console2.log(
+                "NOTE: deadlineOffset provided but no event created in this script. Use a separate script to create events and set deadlines."
+            );
         }
 
         vm.stopBroadcast();

@@ -33,7 +33,7 @@ contract Deposit is ERC1155Holder {
      */
     function deposit(uint256 seasonId, uint256 amount) external {
         require(amount > 0, "amount=0");
-    // Agent pull without user approval; relies on TRANSFER_AGENT_ROLE granted to this contract
+        // Agent pull without user approval; relies on TRANSFER_AGENT_ROLE granted to this contract
         FP.agentTransferFrom(msg.sender, address(this), seasonId, amount, "");
         deposited[msg.sender][seasonId] += amount;
         emit Deposited(msg.sender, seasonId, amount);
