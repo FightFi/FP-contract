@@ -1,3 +1,23 @@
+# FP1155 and Booster — Quick Reference
+
+Use these addresses in apps and scripts. Always interact with the FP1155 proxy (not the implementation).
+
+## Production (BSC Mainnet – chainId 56)
+- FP1155 (UUPS proxy): `0xD0B591751E6aa314192810471461bDE963796306`
+- FP1155 implementation (current, for verification only): `0xFC2a83E854C1D975284e4A13c0837A1b26e09221`
+- Booster: `0x5E845Db62fDF02451cfC98be1e9927eB48a42fce`
+- Base metadata URI: `https://assets.fight.foundation/fp/{id}.json`
+
+## Testnet (BSC Testnet – chainId 97)
+- FP1155 (UUPS proxy): `0x5E845Db62fDF02451cfC98be1e9927eB48a42fce`
+- FP1155 implementation (logic): `0xFf2c7902FF6388553D1125Ca26545e30eaA1A4e6`
+- Booster: `0x09107f150E478f7D81b35870e8c73c9Fb01Eda6B`
+- Base metadata URI: `https://assets.fight.foundation/fp/{id}.json`
+
+Notes:
+- FP1155 is upgradeable via UUPS; storage/data lives in the proxy, so upgrades preserve balances and settings.
+- ERC-1155 token URI resolves with {id} as 64-char lowercase hex (no 0x).
+
 # FP1155 Deployment Summary
 ## Mainnet Proxy Address
 
@@ -9,6 +29,16 @@
 **MINTER_ROLE:** 0xBf797273B60545882711f003094C065351a9CD7B
 **Base URI Update (Mainnet):** set via `setURI("https://assets.fight.foundation/fp/{id}.json")`
   - Tx: `0x2639b6a9789819550e6f242dce30f45dd476508049ee71e3651a3fb8e220cfa1`
+**Upgrade (Mainnet):** UUPS upgrade executed, proxy unchanged
+  - Previous implementation: `0xD9fda390Fa212324F26276F14D6954076948C8d1`
+  - New implementation: `0xFC2a83E854C1D975284e4A13c0837A1b26e09221`
+  - Deploy impl tx: `0xf8de839546191818e91f37b9f760f5139434c0863d600b3dd4ca60a836cf461c`
+  - Upgrade tx: `0x3f25bd8973f6c5adc8ec338f4f8a6eece6018de88414cdecc22911292613a8ac`
+  - Verified: https://bscscan.com/address/0xFC2a83E854C1D975284e4A13c0837A1b26e09221#code
+  - Note: State is preserved across upgrades (storage remains in proxy)
+#### Allowlist updates (Mainnet FP1155 proxy)
+- Removed from transfer allowlist → `0xf362fe668d93c43be16716a73702333795fbcea6`
+  - Tx: `0x5b6cc71d7f2a62c141f48b0d11c5f850fb146eded1a06ebefaf06daaf653e372`
 ## ⚠️ Important: Upgradeable Contract
 
 **FP1155 is now upgradeable using the UUPS (Universal Upgradeable Proxy Standard) pattern.**
