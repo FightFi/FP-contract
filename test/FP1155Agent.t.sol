@@ -43,12 +43,12 @@ contract FP1155AgentTest is Test {
 
     function test_AgentTransfer_SucceedsWithRole() public {
         // grant agent role
-        fp.grantRole(fp.TRANSFER_AGENT_ROLE(), address(agent));
+    fp.grantRole(fp.TRANSFER_AGENT_ROLE(), address(agent));
         // move 20 from alice to bob without approvals
         vm.prank(address(0xCAFE)); // arbitrary caller; agent is internal caller
         agent.pull(alice, bob, SEASON, 20);
-        assertEq(fp.balanceOf(alice, SEASON), 30);
-        assertEq(fp.balanceOf(bob, SEASON), 20);
+    assertEq(fp.balanceOf(alice, SEASON), 30);
+    assertEq(fp.balanceOf(bob, SEASON), 20);
     }
 
     function test_AgentTransfer_RevertsWithoutRole() public {
@@ -57,22 +57,22 @@ contract FP1155AgentTest is Test {
     }
 
     function test_AgentTransfer_RevertsIfUserNotAllowlisted() public {
-        fp.grantRole(fp.TRANSFER_AGENT_ROLE(), address(agent));
+    fp.grantRole(fp.TRANSFER_AGENT_ROLE(), address(agent));
         // remove alice from allowlist
-        fp.setTransferAllowlist(alice, false);
+    fp.setTransferAllowlist(alice, false);
         vm.expectRevert(bytes("transfer: endpoints not allowed"));
         agent.pull(alice, bob, SEASON, 1);
     }
 
     function test_AgentTransfer_RevertsIfSeasonLocked() public {
-        fp.grantRole(fp.TRANSFER_AGENT_ROLE(), address(agent));
-        fp.setSeasonStatus(SEASON, FP1155.SeasonStatus.LOCKED);
+    fp.grantRole(fp.TRANSFER_AGENT_ROLE(), address(agent));
+    fp.setSeasonStatus(SEASON, FP1155.SeasonStatus.LOCKED);
         vm.expectRevert(bytes("transfer: season locked"));
         agent.pull(alice, bob, SEASON, 1);
     }
 
     function test_AgentTransfer_RevertsOnZeroAmount() public {
-        fp.grantRole(fp.TRANSFER_AGENT_ROLE(), address(agent));
+    fp.grantRole(fp.TRANSFER_AGENT_ROLE(), address(agent));
         vm.expectRevert(bytes("amount=0"));
         agent.pull(alice, bob, SEASON, 0);
     }

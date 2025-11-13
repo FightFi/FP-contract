@@ -105,7 +105,7 @@ contract DepositTest is Test {
 
         // Unlock for setup is not possible (irreversible), so create a fresh season 1
         uint256 season2 = 1;
-    // Season defaults OPEN; mint to user, deposit
+        // Season defaults OPEN; mint to user, deposit
         fp.mint(user, season2, 10, "");
         vm.prank(user);
         deposit.deposit(season2, 6);

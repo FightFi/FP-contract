@@ -26,8 +26,8 @@ contract FP1155 is Initializable, UUPSUpgradeable, ERC1155Upgradeable, ERC1155Pa
 
     // ============ Types ============
     enum SeasonStatus {
-        OPEN,   // 0
-        LOCKED  // 1
+        OPEN, // 0
+        LOCKED // 1
     }
 
     // ============ Storage ============
@@ -37,9 +37,8 @@ contract FP1155 is Initializable, UUPSUpgradeable, ERC1155Upgradeable, ERC1155Pa
     mapping(address => uint256) public nonces; // per-user monotonically increasing nonce
 
     // EIP-712 typehash for claim typed struct
-    bytes32 public constant CLAIM_TYPEHASH = keccak256(
-        "Claim(address account,uint256 seasonId,uint256 amount,uint256 nonce,uint256 deadline)"
-    );
+    bytes32 public constant CLAIM_TYPEHASH =
+        keccak256("Claim(address account,uint256 seasonId,uint256 amount,uint256 nonce,uint256 deadline)");
 
     // ============ Events ============
     event SeasonStatusUpdated(uint256 indexed seasonId, SeasonStatus status);
@@ -156,7 +155,7 @@ contract FP1155 is Initializable, UUPSUpgradeable, ERC1155Upgradeable, ERC1155Pa
      * @param amount amount to mint
      * @param deadline unix timestamp after which claim is invalid
      * @param signature EIP-712 signature from an address with CLAIM_SIGNER_ROLE over Claim struct
-     */
+    */
     function claim(
         uint256 seasonId,
         uint256 amount,

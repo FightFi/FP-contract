@@ -286,6 +286,148 @@ Both deployments include:
 7. ⏳ Monitor events and transactions
 8. ⏳ Consider admin key migration to multisig (for production)
 
+---
+
+## Booster Contract Deployment
+
+The **Booster** contract (`src/Booster.sol`) implements UFC Strike Now pick'em functionality where users boost fight predictions with FP tokens.
+
+### Prerequisites
+
+Before deploying Booster:
+1. ✅ FP1155 contract must be deployed
+2. ✅ Know the FP1155 contract address
+3. ✅ Have operator address(es) ready
+4. ✅ Optional: list of initial users to allowlist
+
+### Deployment (Booster)
+
+Deploy Booster with a simple cast transaction (example assumes constructor `(address fp1155, address admin)` – adjust if different):
+
+```bash
+export FP1155_ADDRESS=0xD0B591751E6aa314192810471461bDE963796306
+export ADMIN_ADDRESS=$DEPLOYER
+
+cast send $DEPLOYER_ADDRESS \
+  "deployBooster(address,address)" \
+  $FP1155_ADDRESS $ADMIN_ADDRESS \
+  --rpc-url $BSC_TESTNET_RPC_URL --private-key $PRIVATE_KEY # <— replace with actual deployment method
+```
+
+Then wire roles / allowlist:
+```bash
+# Grant OPERATOR_ROLE
+cast send $BOOSTER_ADDRESS \
+  "grantRole(bytes32,address)" $(cast keccak OPERATOR_ROLE) $OPERATOR_ADDRESS \
+  --rpc-url $BSC_TESTNET_RPC_URL --private-key $PRIVATE_KEY
+
+# FP1155: grant TRANSFER_AGENT_ROLE to Booster
+cast send $FP1155_ADDRESS \
+  "grantRole(bytes32,address)" $(cast keccak TRANSFER_AGENT_ROLE) $BOOSTER_ADDRESS \
+  --rpc-url $BSC_TESTNET_RPC_URL --private-key $PRIVATE_KEY
+
+# Allowlist Booster + operator
+cast send $FP1155_ADDRESS "setTransferAllowlist(address,bool)" $BOOSTER_ADDRESS true --rpc-url $BSC_TESTNET_RPC_URL --private-key $PRIVATE_KEY
+cast send $FP1155_ADDRESS "setTransferAllowlist(address,bool)" $OPERATOR_ADDRESS true --rpc-url $BSC_TESTNET_RPC_URL --private-key $PRIVATE_KEY
+```
+
+### Post-Deployment Configuration
+
+**Verify Booster Deployment:**
+```bash
+# Check FP1155 address
+cast call $BOOSTER_ADDRESS "FP()(address)" --rpc-url $RPC_URL
+
+# Check operator role
+cast call $BOOSTER_ADDRESS \
+  "hasRole(bytes32,address)(bool)" \
+  $(cast keccak OPERATOR_ROLE) \
+  $OPERATOR_ADDRESS \
+  --rpc-url $RPC_URL
+```
+
+**Grant Additional Operators:**
+```bash
+cast send $BOOSTER_ADDRESS \
+  "grantRole(bytes32,address)" \
+  $(cast keccak OPERATOR_ROLE) \
+  $NEW_OPERATOR \
+  --rpc-url $RPC_URL \
+  --private-key $ADMIN_PK
+```
+
+**Allowlist More Users:**
+```bash
+cast send $FP1155_ADDRESS \
+  "setTransferAllowlist(address,bool)" \
+  $USER_ADDRESS \
+  true \
+  --rpc-url $RPC_URL \
+  --private-key $ADMIN_PK
+```
+
+### Event Lifecycle Management
+
+Provision events manually or with your own script. (Previous one-shot script references removed pending update.)
+
+**Purge After Deadline:**
+```bash
+cast send $BOOSTER_ADDRESS \
+  "purgeEvent(string,address)" \
+  "UFC_301" \
+  $TREASURY_ADDRESS \
+  --rpc-url $RPC_URL \
+  --private-key $OPERATOR_PK
+```
+
+### Monitoring
+
+**Key Events to Monitor:**
+- `EventCreated(eventId, fightIds, seasonId)`
+- `BoostPlaced(eventId, fightId, user, boostIndex, amount, winner, method)`
+- `FightResultSubmitted(eventId, fightId, winner, method, ...)`
+- `RewardClaimed(eventId, fightId, user, boostIndex, payout, points)`
+- `EventPurged(eventId, recipient, amount)`
+
+**Query Fight State:**
+```bash
+cast call $BOOSTER_ADDRESS \
+  "getFight(string,uint256)" \
+  "UFC_301" 1 \
+  --rpc-url $RPC_URL
+```
+
+**Quote User Claimable (per fight):**
+```bash
+cast call $BOOSTER_ADDRESS \
+  "quoteClaimable(string,uint256,address,bool)(uint256,uint256,uint256)" \
+  "UFC_301" 1 $USER_ADDRESS true \
+  --rpc-url $RPC_URL
+```
+Aggregate over all fights if you need a total prior to `claimReward(eventId)`.
+
+### Security Checklist
+
+- [ ] Booster has `TRANSFER_AGENT_ROLE` on FP1155
+- [ ] Booster is allowlisted in FP1155
+- [ ] Operator is allowlisted in FP1155
+- [ ] All participating users are allowlisted in FP1155
+- [ ] Operator keys are secured (consider multisig)
+- [ ] Offchain points calculation is audited and tested
+- [ ] Claim deadlines are set and communicated to users
+- [ ] Monitoring/alerting is set up for critical events
+- [ ] Emergency pause procedure is documented
+
+### Testnet Addresses (Example)
+
+```bash
+FP1155_ADDRESS=0xD0B591751E6aa314192810471461bDE963796306
+BOOSTER_ADDRESS=0x...  # Update after deployment
+OPERATOR_ADDRESS=0x...
+```
+
+---
+
 ## Support
 
 For contract interaction examples, see:
