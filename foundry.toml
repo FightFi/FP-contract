@@ -6,6 +6,9 @@ remappings = [
 	"hardhat/=node_modules/hardhat/",
 	"@openzeppelin/=node_modules/@openzeppelin/"
 ]
+optimizer = true
+optimizer_runs = 800
+via_ir = true
 
 # See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options
 
