@@ -2,16 +2,16 @@
  * @notice Script to deposit bonus FP tokens to a fight's prize pool
  *
  * @example Deposit 5 FP (5e18 wei) as bonus for fight 1
- * ts-node tools/booster/deposit-bonus.ts --eventId UFC_300 --fightId 1 --amount 5000000000000000000
+ * ts-node tools/booster/deposit-bonus.ts --network testnet --eventId UFC_300 --fightId 1 --amount 5000000000000000000
  *
  * @example Deposit 10 FP for fight 3
- * ts-node tools/booster/deposit-bonus.ts --eventId UFC_300 --fightId 3 --amount 10000000000000000000
+ * ts-node tools/booster/deposit-bonus.ts --network testnet --eventId UFC_300 --fightId 3 --amount 10000000000000000000
  *
  * @example Using alternative parameter names
- * ts-node tools/booster/deposit-bonus.ts --event UFC_300 --fight 1 --amount 5000000000000000000
+ * ts-node tools/booster/deposit-bonus.ts --network testnet --event UFC_300 --fight 1 --amount 5000000000000000000
  *
  * @example With custom contract address
- * ts-node tools/booster/deposit-bonus.ts --contract 0x123... --eventId UFC_300 --fightId 1 --amount 5000000000000000000
+ * ts-node tools/booster/deposit-bonus.ts --network testnet --contract 0x123... --eventId UFC_300 --fightId 1 --amount 5000000000000000000
  */
 import "dotenv/config";
 import { ethers } from "ethers";
@@ -20,17 +20,38 @@ const ABI = [
   "function depositBonus(string calldata eventId, uint256 fightId, uint256 amount) external",
 ];
 
+// Network name to environment variable mapping
+const NETWORK_ENV_MAP: Record<string, string> = {
+  testnet: "BSC_TESTNET_RPC_URL",
+  mainnet: "BSC_RPC_URL",
+};
+
+function getRpcUrl(args: Record<string, string>): string {
+  const networkName = args.network || args.net;
+  if (!networkName) {
+    throw new Error("Missing --network (required: testnet or mainnet)");
+  }
+
+  const envVar = NETWORK_ENV_MAP[networkName.toLowerCase()];
+  if (!envVar) {
+    throw new Error(
+      `Unknown network "${networkName}". Supported: ${Object.keys(NETWORK_ENV_MAP).join(", ")}`
+    );
+  }
+
+  const url = process.env[envVar];
+  if (!url) {
+    throw new Error(
+      `Network "${networkName}" requires ${envVar} to be set in .env`
+    );
+  }
+
+  return url;
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
-  const rpcUrl =
-    args.rpc ||
-    process.env.RPC_URL ||
-    process.env.BSC_TESTNET_RPC_URL ||
-    process.env.BSC_RPC_URL;
-  if (!rpcUrl)
-    throw new Error(
-      "Missing RPC URL (set --rpc or RPC_URL/BSC_TESTNET_RPC_URL/BSC_RPC_URL)"
-    );
+  const rpcUrl = getRpcUrl(args);
   const provider = new ethers.JsonRpcProvider(rpcUrl);
 
   const pk = process.env.OPERATOR_PK || process.env.PRIVATE_KEY;

@@ -10,7 +10,7 @@
  * - Online converter: https://www.epochconverter.com/
  *
  * @example Set cutoff to a specific unix timestamp
- * ts-node tools/booster/set-fight-boost-cutoff.ts --eventId UFC_300 --fightId 1 --cutoff 1704067200
+ * ts-node tools/booster/set-fight-boost-cutoff.ts --network testnet --eventId UFC_300 --fightId 1 --cutoff 1704067200
  *
  * @example Calculate timestamp for 1 hour from now (using Node.js)
  * node -e "console.log(Math.floor(Date.now() / 1000) + 3600)"
@@ -19,13 +19,13 @@
  * node -e "console.log(Math.floor(new Date('2024-01-01T00:00:00Z').getTime() / 1000))"
  *
  * @example Disable cutoff (set to 0, relies on status only)
- * ts-node tools/booster/set-fight-boost-cutoff.ts --eventId UFC_300 --fightId 1 --cutoff 0
+ * ts-node tools/booster/set-fight-boost-cutoff.ts --network testnet --eventId UFC_300 --fightId 1 --cutoff 0
  *
  * @example Using alternative parameter names
- * ts-node tools/booster/set-fight-boost-cutoff.ts --event UFC_300 --fight 1 --timestamp 1704067200
+ * ts-node tools/booster/set-fight-boost-cutoff.ts --network testnet --event UFC_300 --fight 1 --timestamp 1704067200
  *
  * @example With custom contract address
- * ts-node tools/booster/set-fight-boost-cutoff.ts --contract 0x123... --eventId UFC_300 --fightId 1 --cutoff 1704067200
+ * ts-node tools/booster/set-fight-boost-cutoff.ts --network testnet --contract 0x123... --eventId UFC_300 --fightId 1 --cutoff 1704067200
  */
 import "dotenv/config";
 import { ethers } from "ethers";
@@ -34,17 +34,38 @@ const ABI = [
   "function setFightBoostCutoff(string calldata eventId, uint256 fightId, uint256 cutoff) external",
 ];
 
+// Network name to environment variable mapping
+const NETWORK_ENV_MAP: Record<string, string> = {
+  testnet: "BSC_TESTNET_RPC_URL",
+  mainnet: "BSC_RPC_URL",
+};
+
+function getRpcUrl(args: Record<string, string>): string {
+  const networkName = args.network || args.net;
+  if (!networkName) {
+    throw new Error("Missing --network (required: testnet or mainnet)");
+  }
+
+  const envVar = NETWORK_ENV_MAP[networkName.toLowerCase()];
+  if (!envVar) {
+    throw new Error(
+      `Unknown network "${networkName}". Supported: ${Object.keys(NETWORK_ENV_MAP).join(", ")}`
+    );
+  }
+
+  const url = process.env[envVar];
+  if (!url) {
+    throw new Error(
+      `Network "${networkName}" requires ${envVar} to be set in .env`
+    );
+  }
+
+  return url;
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
-  const rpcUrl =
-    args.rpc ||
-    process.env.RPC_URL ||
-    process.env.BSC_TESTNET_RPC_URL ||
-    process.env.BSC_RPC_URL;
-  if (!rpcUrl)
-    throw new Error(
-      "Missing RPC URL (set --rpc or RPC_URL/BSC_TESTNET_RPC_URL/BSC_RPC_URL)"
-    );
+  const rpcUrl = getRpcUrl(args);
   const provider = new ethers.JsonRpcProvider(rpcUrl);
 
   const pk = process.env.OPERATOR_PK || process.env.PRIVATE_KEY;
