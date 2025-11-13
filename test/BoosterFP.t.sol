@@ -37,19 +37,19 @@ contract BoosterFPTest is Test {
 
     function setUp() public {
         vm.startPrank(admin);
-        
+
         // Deploy FP1155
         fp = new FP1155("https://api.fightfoundation.io/fp/", admin);
-        
+
         // Deploy Booster
         booster = new Booster(address(fp), admin);
-        
+
         // Grant roles
         fp.grantRole(fp.TRANSFER_AGENT_ROLE(), address(booster));
         fp.grantRole(fp.MINTER_ROLE(), admin);
-        
+
         booster.grantRole(booster.OPERATOR_ROLE(), operator);
-        
+
         // Mint FP tokens to users (FP1155 uses units, not decimals)
         // Minting 100 units of FP token (season 1) to each user
         fp.mint(user1, SEASON_1, 100, "");
@@ -66,13 +66,13 @@ contract BoosterFPTest is Test {
         fp.setTransferAllowlist(user4, true);
         fp.setTransferAllowlist(user5, true);
         fp.setTransferAllowlist(operator, true);
-        
+
         vm.stopPrank();
     }
 
     function test_singleFight() public {
         console2.log("\n=== TEST CASE: Single Fight Analysis ===");
-        
+
         vm.prank(operator);
         booster.createEvent(EVENT_1, 1, SEASON_1);
 
@@ -83,9 +83,9 @@ contract BoosterFPTest is Test {
         booster.depositBonus(EVENT_1, FIGHT_1, prizePool);
 
         // Verify prize pool deposited
-        (, , , uint256 bonusPool, , , , , , , , ) = booster.getFight(EVENT_1, FIGHT_1);
+        (,,, uint256 bonusPool,,,,,,,,) = booster.getFight(EVENT_1, FIGHT_1);
         assertEq(bonusPool, prizePool, "Prize pool should be 100 FP");
- 
+
         // Define stakes
         uint256 stake1 = 20;
         uint256 stake2 = 30;
@@ -118,13 +118,13 @@ contract BoosterFPTest is Test {
         uint256 balanceAfterPredictions2 = fp.balanceOf(user2, SEASON_1);
         uint256 balanceAfterPredictions3 = fp.balanceOf(user3, SEASON_1);
         uint256 totalStakes = stake1 + stake2 + stake3;
-        
+
         assertEq(balanceAfterPredictions1, 100 - stake1, "User1 should have 80 FP after prediction");
         assertEq(balanceAfterPredictions2, 100 - stake2, "User2 should have 70 FP after prediction");
         assertEq(balanceAfterPredictions3, 100 - stake3, "User3 should have 75 FP after prediction");
-        
+
         // Verify original pool
-        (, , , , uint256 originalPool, , , , , , , ) = booster.getFight(EVENT_1, FIGHT_1);
+        (,,,, uint256 originalPool,,,,,,,) = booster.getFight(EVENT_1, FIGHT_1);
         assertEq(originalPool, totalStakes, "Original pool should equal total stakes");
         // Calculate winning pool total shares dynamically
         // User1: RED + SUBMISSION (exact match) = 4 points * 20 stake = 80 shares
@@ -138,7 +138,7 @@ contract BoosterFPTest is Test {
             POINTS_FOR_WINNER,
             POINTS_FOR_WINNER_METHOD
         );
- 
+
         uint256 user2Points = booster.calculateUserPoints(
             Booster.Corner.RED,
             Booster.WinMethod.DECISION,
@@ -181,7 +181,7 @@ contract BoosterFPTest is Test {
             sumWinnersStakes,
             winningPoolTotalShares
         );
-        
+
         // Get total winnings pool (prize pool)
         // prizePool = originalPool - sumWinnersStakes + bonusPool
         // In this case: originalPool = 75, sumWinnersStakes = 75, bonusPool = 100
@@ -201,13 +201,13 @@ contract BoosterFPTest is Test {
 
         // User1 should have winnings from Fight 1 (exact match, 4 points)
         uint256 balanceBefore1 = fp.balanceOf(user1, SEASON_1);
-        
+
         // Get actual claimable amount from contract
         uint256 totalClaimable1 = booster.quoteClaimable(EVENT_1, FIGHT_1, user1, false);
 
         assertGt(totalClaimable1, 0, "User1 should be able to claim");
         assertEq(user1Points, POINTS_FOR_WINNER_METHOD, "User1 should have 4 points (exact match)");
-        
+
         vm.prank(user1);
         booster.claimReward(EVENT_1, FIGHT_1, indices1);
         uint256 balanceAfter1 = fp.balanceOf(user1, SEASON_1);
@@ -220,32 +220,32 @@ contract BoosterFPTest is Test {
         uint256 totalClaimable2 = booster.quoteClaimable(EVENT_1, FIGHT_1, user2, false);
         assertGt(totalClaimable2, 0, "User2 should be able to claim");
         assertEq(user2Points, POINTS_FOR_WINNER, "User2 should have 3 points (winner only)");
-        
+
         vm.prank(user2);
         booster.claimReward(EVENT_1, FIGHT_1, indices2);
-        
+
         uint256 balanceAfter2 = fp.balanceOf(user2, SEASON_1);
         assertEq(balanceAfter2, balanceBefore2 + totalClaimable2, "User2 balance should increase by claimable amount");
 
         // User3 should have winnings from Fight 1 (exact match, 4 points)
         uint256 balanceBefore3 = fp.balanceOf(user3, SEASON_1);
-        
+
         // Get actual claimable amount from contract
         uint256 totalClaimable3 = booster.quoteClaimable(EVENT_1, FIGHT_1, user3, false);
         assertGt(totalClaimable3, 0, "User3 should be able to claim");
-        assertEq(user3Points, POINTS_FOR_WINNER_METHOD, "User3 should have 4 points (exact match)");         
-        
+        assertEq(user3Points, POINTS_FOR_WINNER_METHOD, "User3 should have 4 points (exact match)");
+
         vm.prank(user3);
         booster.claimReward(EVENT_1, FIGHT_1, indices3);
-        
+
         uint256 balanceAfter3 = fp.balanceOf(user3, SEASON_1);
         assertEq(balanceAfter3, balanceBefore3 + totalClaimable3, "User3 balance should increase by claimable amount");
- 
+
         console2.log("\n=== RESULTS SUMMARY ===");
         console2.log("User1 claimable: %d", totalClaimable1);
         console2.log("User2 claimable: %d", totalClaimable2);
         console2.log("User3 claimable: %d", totalClaimable3);
-        
+
         // Verify all positions are claimed
         uint256 claimable1After = booster.quoteClaimable(EVENT_1, FIGHT_1, user1, false);
         uint256 claimable2After = booster.quoteClaimable(EVENT_1, FIGHT_1, user2, false);
@@ -258,11 +258,12 @@ contract BoosterFPTest is Test {
         // The remainder is only from the prizePool (winnings), not from the stakes
         // Each user gets back their stake + winnings, so we need to subtract stakes from totalClaimable
         // User1: stake1 = 20, User2: stake2 = 30, User3: stake3 = 25
-        uint256 totalWinningsDistributed = (totalClaimable1 - stake1) + (totalClaimable2 - stake2) + (totalClaimable3 - stake3);
+        uint256 totalWinningsDistributed =
+            (totalClaimable1 - stake1) + (totalClaimable2 - stake2) + (totalClaimable3 - stake3);
         uint256 expectedRemainder = totalPool - totalWinningsDistributed;
         uint256 contractBalanceAfter = fp.balanceOf(address(booster), SEASON_1);
         assertEq(contractBalanceAfter, expectedRemainder, "Contract should have truncation remainder");
-        
+
         console2.log("Remainder in Contract: %d (truncation remainder)", expectedRemainder);
 
         //print users balances
@@ -283,8 +284,8 @@ contract BoosterFPTest is Test {
     ) internal view returns (uint256 canClaim, uint256 winnings, uint256 totalPayout) {
         uint256 totalClaimable = booster.quoteClaimable(eventId, fightId, user, false);
         canClaim = totalClaimable > 0 ? 1 : 0;
-        
-       uint256 userShares = points * stake; // points * amount for this boost
+
+        uint256 userShares = points * stake; // points * amount for this boost
         winnings = (totalPool * userShares) / totalWinningPoints;
         totalPayout = stake + winnings;
     }
@@ -299,7 +300,7 @@ contract BoosterFPTest is Test {
      */
     function test_multipleFight() public {
         console2.log("\n=== TEST CASE: Multiple Fights - Complete Flow ===");
-        
+
         // ============ STEP 1: Create Event with 5 fights ============
         uint256 numFights = 5;
         vm.prank(operator);
@@ -317,7 +318,7 @@ contract BoosterFPTest is Test {
 
         // Verify prize pools deposited
         for (uint256 i = 1; i <= numFights; i++) {
-            (, , , uint256 bonusPool, , , , , , , , ) = booster.getFight(EVENT_1, i);
+            (,,, uint256 bonusPool,,,,,,,,) = booster.getFight(EVENT_1, i);
             assertEq(bonusPool, prizePoolPerFight, "Prize pool should be 100 FP per fight");
         }
 
@@ -367,33 +368,45 @@ contract BoosterFPTest is Test {
         uint256 balanceAfterPredictions1 = fp.balanceOf(user1, SEASON_1);
         uint256 balanceAfterPredictions2 = fp.balanceOf(user2, SEASON_1);
         uint256 balanceAfterPredictions3 = fp.balanceOf(user3, SEASON_1);
-        
+
         uint256 user1InitialBalance = 100;
         uint256 user2InitialBalance = 100;
         uint256 user3InitialBalance = 100;
-        
+
         console2.log("\n=== BALANCES AFTER PREDICTIONS ===");
         console2.log("User1 balance: %d (bet: %d FP)", balanceAfterPredictions1, user1TotalStakes);
         console2.log("User2 balance: %d (bet: %d FP)", balanceAfterPredictions2, user2TotalStakes);
         console2.log("User3 balance: %d (bet: %d FP)", balanceAfterPredictions3, user3TotalStakes);
-        
-        assertEq(balanceAfterPredictions1, user1InitialBalance - user1TotalStakes, "User1 balance should be correct after prediction");
-        assertEq(balanceAfterPredictions2, user2InitialBalance - user2TotalStakes, "User2 balance should be correct after prediction");
-        assertEq(balanceAfterPredictions3, user3InitialBalance - user3TotalStakes, "User3 balance should be correct after prediction");
+
+        assertEq(
+            balanceAfterPredictions1,
+            user1InitialBalance - user1TotalStakes,
+            "User1 balance should be correct after prediction"
+        );
+        assertEq(
+            balanceAfterPredictions2,
+            user2InitialBalance - user2TotalStakes,
+            "User2 balance should be correct after prediction"
+        );
+        assertEq(
+            balanceAfterPredictions3,
+            user3InitialBalance - user3TotalStakes,
+            "User3 balance should be correct after prediction"
+        );
 
         // Verify original pools for each fight
-        (, , , , uint256 originalPool1, , , , , , , ) = booster.getFight(EVENT_1, 1);
-        (, , , , uint256 originalPool2, , , , , , , ) = booster.getFight(EVENT_1, 2);
-        (, , , , uint256 originalPool3, , , , , , , ) = booster.getFight(EVENT_1, 3);
-        (, , , , uint256 originalPool4, , , , , , , ) = booster.getFight(EVENT_1, 4);
-        (, , , , uint256 originalPool5, , , , , , , ) = booster.getFight(EVENT_1, 5);
-        
+        (,,,, uint256 originalPool1,,,,,,,) = booster.getFight(EVENT_1, 1);
+        (,,,, uint256 originalPool2,,,,,,,) = booster.getFight(EVENT_1, 2);
+        (,,,, uint256 originalPool3,,,,,,,) = booster.getFight(EVENT_1, 3);
+        (,,,, uint256 originalPool4,,,,,,,) = booster.getFight(EVENT_1, 4);
+        (,,,, uint256 originalPool5,,,,,,,) = booster.getFight(EVENT_1, 5);
+
         uint256 fight1TotalStakes = user1Stake1 + user2Stake1 + user3Stake1;
         uint256 fight2TotalStakes = user1Stake2 + user2Stake2;
         uint256 fight3TotalStakes = user1Stake3;
         uint256 fight4TotalStakes = user3Stake4;
         uint256 fight5TotalStakes = user3Stake5;
-        
+
         assertEq(originalPool1, fight1TotalStakes, "Fight 1 original pool should equal total stakes");
         assertEq(originalPool2, fight2TotalStakes, "Fight 2 original pool should equal total stakes");
         assertEq(originalPool3, fight3TotalStakes, "Fight 3 original pool should equal total stakes");
@@ -434,13 +447,12 @@ contract BoosterFPTest is Test {
             POINTS_FOR_WINNER,
             POINTS_FOR_WINNER_METHOD
         );
-        
+
         // All users win (have points > 0)
         uint256 fight1SumWinnersStakes = user1Stake1 + user2Stake1 + user3Stake1;
-        uint256 fight1WinningPoolTotalShares = (user1PointsFight1Calc * user1Stake1) + 
-                                               (user2PointsFight1Calc * user2Stake1) + 
-                                               (user3PointsFight1Calc * user3Stake1);
-        
+        uint256 fight1WinningPoolTotalShares = (user1PointsFight1Calc * user1Stake1)
+            + (user2PointsFight1Calc * user2Stake1) + (user3PointsFight1Calc * user3Stake1);
+
         vm.prank(operator);
         booster.submitFightResult(
             EVENT_1,
@@ -463,11 +475,11 @@ contract BoosterFPTest is Test {
             POINTS_FOR_WINNER,
             POINTS_FOR_WINNER_METHOD
         );
-        
+
         // Only User1 wins (has points > 0)
         uint256 fight2SumWinnersStakes = user1Stake2; // User2 lost (0 points)
         uint256 fight2WinningPoolTotalShares = user1PointsFight2Calc * user1Stake2;
-        
+
         vm.prank(operator);
         booster.submitFightResult(
             EVENT_1,
@@ -490,11 +502,11 @@ contract BoosterFPTest is Test {
             POINTS_FOR_WINNER,
             POINTS_FOR_WINNER_METHOD
         );
-        
+
         // Only User1 wins
         uint256 fight3SumWinnersStakes = user1Stake3;
         uint256 fight3WinningPoolTotalShares = user1PointsFight3Calc * user1Stake3;
-        
+
         vm.prank(operator);
         booster.submitFightResult(
             EVENT_1,
@@ -517,11 +529,11 @@ contract BoosterFPTest is Test {
             POINTS_FOR_WINNER,
             POINTS_FOR_WINNER_METHOD
         );
-        
+
         // Only User3 wins
         uint256 fight4SumWinnersStakes = user3Stake4;
         uint256 fight4WinningPoolTotalShares = user3PointsFight4Calc * user3Stake4;
-        
+
         vm.prank(operator);
         booster.submitFightResult(
             EVENT_1,
@@ -544,11 +556,11 @@ contract BoosterFPTest is Test {
             POINTS_FOR_WINNER,
             POINTS_FOR_WINNER_METHOD
         );
-        
+
         // Only User3 wins
         uint256 fight5SumWinnersStakes = user3Stake5;
         uint256 fight5WinningPoolTotalShares = user3PointsFight5Calc * user3Stake5;
-        
+
         vm.prank(operator);
         booster.submitFightResult(
             EVENT_1,
@@ -589,7 +601,7 @@ contract BoosterFPTest is Test {
             POINTS_FOR_WINNER,
             POINTS_FOR_WINNER_METHOD
         );
-        
+
         assertEq(user1PointsFight1, POINTS_FOR_WINNER_METHOD, "User1 Fight 1 should have 4 points (exact match)");
         assertEq(user2PointsFight1, POINTS_FOR_WINNER, "User2 Fight 1 should have 3 points (winner only)");
         assertEq(user3PointsFight1, POINTS_FOR_WINNER_METHOD, "User3 Fight 1 should have 4 points (exact match)");
@@ -603,7 +615,7 @@ contract BoosterFPTest is Test {
             POINTS_FOR_WINNER,
             POINTS_FOR_WINNER_METHOD
         );
-        
+
         assertEq(user1PointsFight2, POINTS_FOR_WINNER_METHOD, "User1 Fight 2 should have 4 points (exact match)");
 
         // Fight 3: BLUE + DECISION
@@ -615,7 +627,7 @@ contract BoosterFPTest is Test {
             POINTS_FOR_WINNER,
             POINTS_FOR_WINNER_METHOD
         );
-        
+
         assertEq(user1PointsFight3, POINTS_FOR_WINNER_METHOD, "User1 Fight 3 should have 4 points (exact match)");
 
         // Fight 4: RED + SUBMISSION
@@ -627,7 +639,7 @@ contract BoosterFPTest is Test {
             POINTS_FOR_WINNER,
             POINTS_FOR_WINNER_METHOD
         );
-        
+
         assertEq(user3PointsFight4, POINTS_FOR_WINNER_METHOD, "User3 Fight 4 should have 4 points (exact match)");
 
         // Fight 5: RED + SUBMISSION
@@ -639,7 +651,7 @@ contract BoosterFPTest is Test {
             POINTS_FOR_WINNER,
             POINTS_FOR_WINNER_METHOD
         );
-        
+
         assertEq(user3PointsFight5, POINTS_FOR_WINNER_METHOD, "User3 Fight 5 should have 4 points (exact match)");
 
         // ============ STEP 4: Users claim winnings ============
@@ -648,33 +660,33 @@ contract BoosterFPTest is Test {
         uint256[] memory indices1Fight1 = booster.getUserBoostIndices(EVENT_1, 1, user1);
         uint256[] memory indices1Fight2 = booster.getUserBoostIndices(EVENT_1, 2, user1);
         uint256[] memory indices1Fight3 = booster.getUserBoostIndices(EVENT_1, 3, user1);
-        
+
         uint256 totalClaimable1Fight1 = booster.quoteClaimable(EVENT_1, 1, user1, false);
         uint256 totalClaimable1Fight2 = booster.quoteClaimable(EVENT_1, 2, user1, false);
         uint256 totalClaimable1Fight3 = booster.quoteClaimable(EVENT_1, 3, user1, false);
         uint256 expectedTotalPayout1 = totalClaimable1Fight1 + totalClaimable1Fight2 + totalClaimable1Fight3;
-        
+
         assertGt(totalClaimable1Fight1, 0, "User1 should be able to claim from Fight 1");
         assertGt(totalClaimable1Fight2, 0, "User1 should be able to claim from Fight 2");
         assertGt(totalClaimable1Fight3, 0, "User1 should be able to claim from Fight 3");
-        
+
         console2.log("\n=== USER1 CLAIM ===");
         console2.log("Before claim - Balance: %d", balanceBefore1);
         console2.log("Fight 1 claimable: %d", totalClaimable1Fight1);
         console2.log("Fight 2 claimable: %d", totalClaimable1Fight2);
         console2.log("Fight 3 claimable: %d", totalClaimable1Fight3);
         console2.log("Expected total payout: %d", expectedTotalPayout1);
-        
+
         vm.prank(user1);
         booster.claimReward(EVENT_1, 1, indices1Fight1);
         vm.prank(user1);
         booster.claimReward(EVENT_1, 2, indices1Fight2);
         vm.prank(user1);
         booster.claimReward(EVENT_1, 3, indices1Fight3);
-        
+
         uint256 balanceAfter1 = fp.balanceOf(user1, SEASON_1);
         uint256 winnings1 = balanceAfter1 - balanceBefore1;
-        
+
         console2.log("After claim - Balance: %d", balanceAfter1);
         console2.log("Winnings received: %d", winnings1);
         assertEq(balanceAfter1, balanceBefore1 + expectedTotalPayout1, "User1 balance should match expected payout");
@@ -682,23 +694,23 @@ contract BoosterFPTest is Test {
         // User2 claim - should have winnings from Fight 1 only
         uint256 balanceBefore2 = fp.balanceOf(user2, SEASON_1);
         uint256[] memory indices2Fight1 = booster.getUserBoostIndices(EVENT_1, 1, user2);
-        
+
         uint256 totalClaimable2Fight1 = booster.quoteClaimable(EVENT_1, 1, user2, false);
-        
+
         assertGt(totalClaimable2Fight1, 0, "User2 should be able to claim from Fight 1");
-        
+
         console2.log("\n=== USER2 CLAIM ===");
         console2.log("Before claim - Balance: %d", balanceBefore2);
         console2.log("Fight 1 claimable: %d", totalClaimable2Fight1);
         console2.log("Fight 2: Lost (wrong fighter)");
         console2.log("Expected total payout: %d", totalClaimable2Fight1);
-        
+
         vm.prank(user2);
         booster.claimReward(EVENT_1, 1, indices2Fight1);
-        
+
         uint256 balanceAfter2 = fp.balanceOf(user2, SEASON_1);
         uint256 winnings2 = balanceAfter2 - balanceBefore2;
-        
+
         console2.log("After claim - Balance: %d", balanceAfter2);
         console2.log("Winnings received: %d", winnings2);
         assertEq(balanceAfter2, balanceBefore2 + totalClaimable2Fight1, "User2 balance should match expected payout");
@@ -708,75 +720,83 @@ contract BoosterFPTest is Test {
         uint256[] memory indices3Fight1 = booster.getUserBoostIndices(EVENT_1, 1, user3);
         uint256[] memory indices3Fight4 = booster.getUserBoostIndices(EVENT_1, 4, user3);
         uint256[] memory indices3Fight5 = booster.getUserBoostIndices(EVENT_1, 5, user3);
-        
+
         uint256 totalClaimable3Fight1 = booster.quoteClaimable(EVENT_1, 1, user3, false);
         uint256 totalClaimable3Fight4 = booster.quoteClaimable(EVENT_1, 4, user3, false);
         uint256 totalClaimable3Fight5 = booster.quoteClaimable(EVENT_1, 5, user3, false);
         uint256 expectedTotalPayout3 = totalClaimable3Fight1 + totalClaimable3Fight4 + totalClaimable3Fight5;
-        
+
         assertGt(totalClaimable3Fight1, 0, "User3 should be able to claim from Fight 1");
         assertGt(totalClaimable3Fight4, 0, "User3 should be able to claim from Fight 4");
         assertGt(totalClaimable3Fight5, 0, "User3 should be able to claim from Fight 5");
-        
+
         console2.log("\n=== USER3 CLAIM ===");
         console2.log("Before claim - Balance: %d", balanceBefore3);
         console2.log("Fight 1 claimable: %d", totalClaimable3Fight1);
         console2.log("Fight 4 claimable: %d", totalClaimable3Fight4);
         console2.log("Fight 5 claimable: %d", totalClaimable3Fight5);
         console2.log("Expected total payout: %d", expectedTotalPayout3);
-        
+
         vm.prank(user3);
         booster.claimReward(EVENT_1, 1, indices3Fight1);
         vm.prank(user3);
         booster.claimReward(EVENT_1, 4, indices3Fight4);
         vm.prank(user3);
         booster.claimReward(EVENT_1, 5, indices3Fight5);
-        
+
         uint256 balanceAfter3 = fp.balanceOf(user3, SEASON_1);
         uint256 winnings3 = balanceAfter3 - balanceBefore3;
-        
+
         console2.log("After claim - Balance: %d", balanceAfter3);
         console2.log("Winnings received: %d", winnings3);
         assertEq(balanceAfter3, balanceBefore3 + expectedTotalPayout3, "User3 balance should match expected payout");
 
         // ============ STEP 5: Final Summary ============
         console2.log("\n=== FINAL RESULTS SUMMARY ===");
-        
+
         // Calculate totals (user1TotalStakes, user2TotalStakes, user3TotalStakes already calculated above)
         uint256 totalStakesPlaced = user1TotalStakes + user2TotalStakes + user3TotalStakes;
-        
+
         // Calculate total winnings (claimable - stake for each fight)
-        uint256 user1Winnings = (totalClaimable1Fight1 - user1Stake1) + (totalClaimable1Fight2 - user1Stake2) + (totalClaimable1Fight3 - user1Stake3);
+        uint256 user1Winnings = (totalClaimable1Fight1 - user1Stake1) + (totalClaimable1Fight2 - user1Stake2)
+            + (totalClaimable1Fight3 - user1Stake3);
         uint256 user2Winnings = totalClaimable2Fight1 - user2Stake1; // User2 only won Fight 1
-        uint256 user3Winnings = (totalClaimable3Fight1 - user3Stake1) + (totalClaimable3Fight4 - user3Stake4) + (totalClaimable3Fight5 - user3Stake5);
+        uint256 user3Winnings = (totalClaimable3Fight1 - user3Stake1) + (totalClaimable3Fight4 - user3Stake4)
+            + (totalClaimable3Fight5 - user3Stake5);
         uint256 totalWinningsPaid = user1Winnings + user2Winnings + user3Winnings;
-        
+
         // Calculate total stakes recovered (only winning fights)
         uint256 user1StakesRecovered = user1Stake1 + user1Stake2 + user1Stake3; // All 3 fights won
         uint256 user2StakesRecovered = user2Stake1; // Only Fight 1 won
         uint256 user3StakesRecovered = user3Stake1 + user3Stake4 + user3Stake5; // All 3 fights won
         uint256 totalStakesRecovered = user1StakesRecovered + user2StakesRecovered + user3StakesRecovered;
-        
+
         // Calculate total payout
         uint256 totalPayout = totalWinningsPaid + totalStakesRecovered;
-        
+
         console2.log("\n--- User1 Results ---");
         console2.log("  Fight 1: %d claimable (%d stake + winnings)", totalClaimable1Fight1, user1Stake1);
         console2.log("  Fight 2: %d claimable (%d stake + winnings)", totalClaimable1Fight2, user1Stake2);
         console2.log("  Fight 3: %d claimable (%d stake + winnings)", totalClaimable1Fight3, user1Stake3);
-        console2.log("  Total: %d winnings + %d stake = %d total", user1Winnings, user1TotalStakes, expectedTotalPayout1);
-        
+        console2.log(
+            "  Total: %d winnings + %d stake = %d total", user1Winnings, user1TotalStakes, expectedTotalPayout1
+        );
+
         console2.log("\n--- User2 Results ---");
         console2.log("  Fight 1: %d claimable (%d stake + winnings)", totalClaimable2Fight1, user2Stake1);
         console2.log("  Fight 2: Lost (wrong fighter)");
-        console2.log("  Total: %d winnings + %d stake = %d total", user2Winnings, user2StakesRecovered, totalClaimable2Fight1);
-        
+        console2.log(
+            "  Total: %d winnings + %d stake = %d total", user2Winnings, user2StakesRecovered, totalClaimable2Fight1
+        );
+
         console2.log("\n--- User3 Results ---");
         console2.log("  Fight 1: %d claimable (%d stake + winnings)", totalClaimable3Fight1, user3Stake1);
         console2.log("  Fight 4: %d claimable (%d stake + winnings)", totalClaimable3Fight4, user3Stake4);
         console2.log("  Fight 5: %d claimable (%d stake + winnings)", totalClaimable3Fight5, user3Stake5);
-        console2.log("  Total: %d winnings + %d stake = %d total", user3Winnings, user3TotalStakes, expectedTotalPayout3);
-        
+        console2.log(
+            "  Total: %d winnings + %d stake = %d total", user3Winnings, user3TotalStakes, expectedTotalPayout3
+        );
+
         console2.log("\n--- Overall Summary ---");
         console2.log("  Total Winnings Paid: %d", totalWinningsPaid);
         console2.log("  Total Stakes Recovered: %d", totalStakesRecovered);
@@ -784,7 +804,7 @@ contract BoosterFPTest is Test {
         console2.log("  Total Stakes Placed: %d", totalStakesPlaced);
         console2.log("  Total Prize Pool: %d", totalPrizePool);
         console2.log("  Total in Contract (before payouts): %d", totalPrizePool + totalStakesPlaced);
-        
+
         // Verify all positions are claimed
         uint256 claimable1Fight1After = booster.quoteClaimable(EVENT_1, 1, user1, false);
         uint256 claimable1Fight2After = booster.quoteClaimable(EVENT_1, 2, user1, false);
@@ -793,7 +813,7 @@ contract BoosterFPTest is Test {
         uint256 claimable3Fight1After = booster.quoteClaimable(EVENT_1, 1, user3, false);
         uint256 claimable3Fight4After = booster.quoteClaimable(EVENT_1, 4, user3, false);
         uint256 claimable3Fight5After = booster.quoteClaimable(EVENT_1, 5, user3, false);
-        
+
         assertEq(claimable1Fight1After, 0, "User1 Fight 1 should have no remaining claimable");
         assertEq(claimable1Fight2After, 0, "User1 Fight 2 should have no remaining claimable");
         assertEq(claimable1Fight3After, 0, "User1 Fight 3 should have no remaining claimable");
@@ -801,11 +821,11 @@ contract BoosterFPTest is Test {
         assertEq(claimable3Fight1After, 0, "User3 Fight 1 should have no remaining claimable");
         assertEq(claimable3Fight4After, 0, "User3 Fight 4 should have no remaining claimable");
         assertEq(claimable3Fight5After, 0, "User3 Fight 5 should have no remaining claimable");
-        
+
         // Calculate and verify remainder in contract (truncation remainder from integer division)
         // For each fight: totalPool = originalPool - sumWinnersStakes + bonusPool
         uint256 totalWinningsDistributed = user1Winnings + user2Winnings + user3Winnings;
-        
+
         // Calculate total pools for each fight dynamically
         uint256 fight1TotalPool = originalPool1 - fight1SumWinnersStakes + prizePoolPerFight;
         uint256 fight2TotalPool = originalPool2 - fight2SumWinnersStakes + prizePoolPerFight;
@@ -813,18 +833,18 @@ contract BoosterFPTest is Test {
         uint256 fight4TotalPool = originalPool4 - fight4SumWinnersStakes + prizePoolPerFight;
         uint256 fight5TotalPool = originalPool5 - fight5SumWinnersStakes + prizePoolPerFight;
         uint256 totalPools = fight1TotalPool + fight2TotalPool + fight3TotalPool + fight4TotalPool + fight5TotalPool;
-        
+
         // Expected remainder = total pools - total winnings distributed
         uint256 expectedRemainder = totalPools - totalWinningsDistributed;
         uint256 contractBalanceAfter = fp.balanceOf(address(booster), SEASON_1);
         assertEq(contractBalanceAfter, expectedRemainder, "Contract should have truncation remainder");
-        
+
         console2.log("\n=== REMAINDER VERIFICATION ===");
         console2.log("Total Pools: %d", totalPools);
         console2.log("Total Winnings Distributed: %d", totalWinningsDistributed);
         console2.log("Expected Remainder: %d", expectedRemainder);
         console2.log("Contract Balance: %d", contractBalanceAfter);
-        
+
         // Print final balances
         console2.log("\n=== FINAL BALANCES ===");
         console2.log("User1 balance: %d", fp.balanceOf(user1, SEASON_1));
@@ -846,23 +866,23 @@ contract BoosterFPTest is Test {
      */
     function test_edgeCase1_manyWinnersSmallPool_noSeeding() public {
         console2.log("\n=== EDGE CASE 1: Many Winners with Small Pool (NO SEEDING) ===");
-        
+
         string memory eventId = "UFC_EDGE_CASE_1";
         uint256 fightId = 1;
-        
+
         // Create event with 1 fight
         vm.prank(operator);
         booster.createEvent(eventId, 1, SEASON_1);
 
         // Very small initial prize pool: 1 FP
         uint256 initialPrizePool = 1;
-        
+
         // Deposit initial prize pool
         vm.prank(operator);
         booster.depositBonus(eventId, fightId, initialPrizePool);
 
         // Verify initial prize pool
-        (, , , uint256 bonusPool, , , , , , , , ) = booster.getFight(eventId, fightId);
+        (,,, uint256 bonusPool,,,,,,,,) = booster.getFight(eventId, fightId);
         assertEq(bonusPool, initialPrizePool, "Initial prize pool should be 1 FP");
 
         // 5 users bet 1 FP each on the same winning outcome (RED + SUBMISSION)
@@ -883,12 +903,7 @@ contract BoosterFPTest is Test {
         for (uint256 i = 0; i < users.length; i++) {
             vm.prank(users[i]);
             Booster.BoostInput[] memory boosts = new Booster.BoostInput[](1);
-            boosts[0] = Booster.BoostInput(
-                fightId,
-                stakePerUser,
-                Booster.Corner.RED,
-                Booster.WinMethod.SUBMISSION
-            );
+            boosts[0] = Booster.BoostInput(fightId, stakePerUser, Booster.Corner.RED, Booster.WinMethod.SUBMISSION);
             booster.placeBoosts(eventId, boosts);
         }
 
@@ -901,7 +916,7 @@ contract BoosterFPTest is Test {
         }
 
         // Verify original pool
-        (, , , , uint256 originalPool, , , , , , , ) = booster.getFight(eventId, fightId);
+        (,,,, uint256 originalPool,,,,,,,) = booster.getFight(eventId, fightId);
         assertEq(originalPool, totalStakes, "Original pool should equal total stakes (5 FP)");
 
         // Calculate prize pool WITHOUT seeding
@@ -953,7 +968,7 @@ contract BoosterFPTest is Test {
         uint256 finalPrizePool = originalPool - sumWinnersStakes + bonusPool; // 5 - 5 + 1 = 1
         assertEq(finalPrizePool, currentPrizePool, "Final prize pool should equal current prize pool");
         assertEq(finalPrizePool, initialPrizePool, "Final prize pool should equal initial prize pool (1 FP)");
-        
+
         console2.log("\n=== AFTER RESOLUTION ===");
         console2.log("Final Prize Pool: ", finalPrizePool, " FP");
         uint256 expectedWinningsPerUser = (finalPrizePool * POINTS_FOR_WINNER_METHOD) / winningPoolTotalShares;
@@ -963,7 +978,9 @@ contract BoosterFPTest is Test {
         // Verify contract balance before claims
         uint256 contractBalanceBeforeClaims = fp.balanceOf(address(booster), SEASON_1);
         uint256 expectedContractBalance = originalPool + bonusPool; // 5 + 1 = 6
-        assertEq(contractBalanceBeforeClaims, expectedContractBalance, "Contract balance should be correct before claims");
+        assertEq(
+            contractBalanceBeforeClaims, expectedContractBalance, "Contract balance should be correct before claims"
+        );
 
         // Verify all users can claim but have 0 winnings (only stake back)
         uint256[] memory totalClaimables = new uint256[](users.length);
@@ -1019,7 +1036,9 @@ contract BoosterFPTest is Test {
             console2.log("  Received:", received, "FP");
             console2.log("  Contract paid:", contractPaid, "FP");
 
-            assertEq(balanceAfterClaim, balanceBeforeClaim + totalClaimables[i], "User balance should match expected payout");
+            assertEq(
+                balanceAfterClaim, balanceBeforeClaim + totalClaimables[i], "User balance should match expected payout"
+            );
             assertEq(contractPaid, totalClaimables[i], "Contract should pay exact claimable amount");
         }
 
@@ -1076,23 +1095,23 @@ contract BoosterFPTest is Test {
      */
     function test_edgeCase2_manyWinnersSmallPool_withSeeding() public {
         console2.log("\n=== EDGE CASE 2: Many Winners with Small Pool (WITH SEEDING) ===");
-        
+
         string memory eventId = "UFC_EDGE_CASE_2";
         uint256 fightId = 1;
-        
+
         // Create event with 1 fight
         vm.prank(operator);
         booster.createEvent(eventId, 1, SEASON_1);
 
         // Very small initial prize pool: 1 FP
         uint256 initialPrizePool = 1;
-        
+
         // Deposit initial prize pool
         vm.prank(operator);
         booster.depositBonus(eventId, fightId, initialPrizePool);
 
         // Verify initial prize pool
-        (, , , uint256 bonusPool, , , , , , , , ) = booster.getFight(eventId, fightId);
+        (,,, uint256 bonusPool,,,,,,,,) = booster.getFight(eventId, fightId);
         assertEq(bonusPool, initialPrizePool, "Initial prize pool should be 1 FP");
 
         // 5 users bet 1 FP each on the same winning outcome (RED + SUBMISSION)
@@ -1112,12 +1131,7 @@ contract BoosterFPTest is Test {
         for (uint256 i = 0; i < users.length; i++) {
             vm.prank(users[i]);
             Booster.BoostInput[] memory boosts = new Booster.BoostInput[](1);
-            boosts[0] = Booster.BoostInput(
-                fightId,
-                stakePerUser,
-                Booster.Corner.RED,
-                Booster.WinMethod.SUBMISSION
-            );
+            boosts[0] = Booster.BoostInput(fightId, stakePerUser, Booster.Corner.RED, Booster.WinMethod.SUBMISSION);
             booster.placeBoosts(eventId, boosts);
         }
 
@@ -1129,7 +1143,7 @@ contract BoosterFPTest is Test {
         }
 
         // Verify original pool
-        (, , , , uint256 originalPool, , , , , , , ) = booster.getFight(eventId, fightId);
+        (,,,, uint256 originalPool,,,,,,,) = booster.getFight(eventId, fightId);
         assertEq(originalPool, totalStakes, "Original pool should equal total stakes (5 FP)");
 
         // Verify initial balances
@@ -1148,9 +1162,7 @@ contract BoosterFPTest is Test {
         // We need at least 5 FP in prize pool, so we need 4 more FP
         uint256 requiredPrizePool = 5;
         uint256 currentPrizePool = originalPool - totalStakes + bonusPool; // 5 - 5 + 1 = 1
-        uint256 additionalSeedNeeded = requiredPrizePool > currentPrizePool 
-            ? requiredPrizePool - currentPrizePool 
-            : 0; // Need 4 more FP
+        uint256 additionalSeedNeeded = requiredPrizePool > currentPrizePool ? requiredPrizePool - currentPrizePool : 0; // Need 4 more FP
 
         console2.log("\n=== PRIZE POOL CALCULATION ===");
         console2.log("Original Pool: %d FP", originalPool);
@@ -1174,14 +1186,22 @@ contract BoosterFPTest is Test {
             console2.log("Contract received: %d FP", contractBalanceAfterSeed - contractBalanceBeforeSeed);
 
             // Verify the seed was applied
-            (, , , uint256 bonusPoolAfter, , , , , , , , ) = booster.getFight(eventId, fightId);
+            (,,, uint256 bonusPoolAfter,,,,,,,,) = booster.getFight(eventId, fightId);
             assertEq(bonusPoolAfter, initialPrizePool + additionalSeedNeeded, "Bonus pool should include seed");
             assertEq(bonusPoolAfter, requiredPrizePool, "Bonus pool after seed should equal required prize pool");
-            
+
             // Verify operator balance decreased correctly
-            assertEq(operatorBalanceAfter, operatorBalanceBefore - additionalSeedNeeded, "Operator should have paid seed amount");
+            assertEq(
+                operatorBalanceAfter,
+                operatorBalanceBefore - additionalSeedNeeded,
+                "Operator should have paid seed amount"
+            );
             // Verify contract balance increased correctly
-            assertEq(contractBalanceAfterSeed, contractBalanceBeforeSeed + additionalSeedNeeded, "Contract should have received seed amount");
+            assertEq(
+                contractBalanceAfterSeed,
+                contractBalanceBeforeSeed + additionalSeedNeeded,
+                "Contract should have received seed amount"
+            );
         }
 
         // Resolve fight: RED + SUBMISSION wins
@@ -1223,7 +1243,7 @@ contract BoosterFPTest is Test {
         // Get final prize pool after resolution
         uint256 finalPrizePool = originalPool - sumWinnersStakes + (initialPrizePool + additionalSeedNeeded);
         assertEq(finalPrizePool, requiredPrizePool, "Final prize pool should equal required prize pool (5 FP)");
-        
+
         console2.log("\n=== AFTER RESOLUTION ===");
         console2.log("Final Prize Pool: ", finalPrizePool, " FP");
         uint256 expectedWinningsPerUser = (finalPrizePool * POINTS_FOR_WINNER_METHOD) / winningPoolTotalShares;
@@ -1233,7 +1253,9 @@ contract BoosterFPTest is Test {
         // Verify contract balance before claims
         uint256 contractBalanceBeforeClaims = fp.balanceOf(address(booster), SEASON_1);
         uint256 expectedContractBalance = originalPool + initialPrizePool + additionalSeedNeeded; // 5 + 1 + 4 = 10
-        assertEq(contractBalanceBeforeClaims, expectedContractBalance, "Contract balance should be correct before claims");
+        assertEq(
+            contractBalanceBeforeClaims, expectedContractBalance, "Contract balance should be correct before claims"
+        );
 
         // Verify all users can claim and have winnings >= 1 FP
         uint256[] memory totalClaimables = new uint256[](users.length);
@@ -1289,14 +1311,18 @@ contract BoosterFPTest is Test {
             console2.log("  Received:", received, "FP");
             console2.log("  Contract paid:", contractPaid, "FP");
 
-            assertEq(balanceAfterClaim, balanceBeforeClaim + totalClaimables[i], "User balance should match expected payout");
+            assertEq(
+                balanceAfterClaim, balanceBeforeClaim + totalClaimables[i], "User balance should match expected payout"
+            );
             assertEq(contractPaid, totalClaimables[i], "Contract should pay exact claimable amount");
         }
 
         // Verify total payouts calculation
         uint256 expectedTotalPayouts = totalClaimables[0] * users.length; // All users get the same amount
         assertEq(totalPayouts, expectedTotalPayouts, "Total payouts should equal sum of all claimables");
-        assertGe(totalPayouts, (stakePerUser + 1) * users.length, "Total payouts should be at least (stake + 1) * users");
+        assertGe(
+            totalPayouts, (stakePerUser + 1) * users.length, "Total payouts should be at least (stake + 1) * users"
+        );
 
         // Final balances and remainder
         console2.log("\n=== FINAL RESULTS ===");

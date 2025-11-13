@@ -19,49 +19,49 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
 
     // ============ Types ============
     enum FightStatus {
-        OPEN,     // 0 - Accepting boosts
-        CLOSED,   // 1 - No more boosts, fight ongoing
-        RESOLVED  // 2 - Fight ended, results submitted
+        OPEN, // 0 - Accepting boosts
+        CLOSED, // 1 - No more boosts, fight ongoing
+        RESOLVED // 2 - Fight ended, results submitted
     }
 
     enum WinMethod {
-        KNOCKOUT,    // 0 - KO/TKO
-        SUBMISSION,  // 1 - Submission
-        DECISION,    // 2 - Decision
-        NO_CONTEST   // 3 - No-Contest
+        KNOCKOUT, // 0 - KO/TKO
+        SUBMISSION, // 1 - Submission
+        DECISION, // 2 - Decision
+        NO_CONTEST // 3 - No-Contest
     }
 
     enum Corner {
-        RED,   // 0
-        BLUE,  // 1
-        NONE   // 2 - No winner (e.g., no-contest)
+        RED, // 0
+        BLUE, // 1
+        NONE // 2 - No winner (e.g., no-contest)
     }
 
     struct Fight {
         FightStatus status;
         Corner winner;
         WinMethod method;
-        uint256 bonusPool;              // Manager-deposited bonus FP
-        uint256 originalPool;           // Total user boost stakes
-        uint256 sumWinnersStakes;       // Sum of all winning users' stakes
+        uint256 bonusPool; // Manager-deposited bonus FP
+        uint256 originalPool; // Total user boost stakes
+        uint256 sumWinnersStakes; // Sum of all winning users' stakes
         uint256 winningPoolTotalShares; // Total shares (sum of points * stakes for all winners)
-        uint256 pointsForWinner;        // Points if you picked correct winner only
-        uint256 pointsForWinnerMethod;  // Points if you picked correct winner AND method
-        uint256 claimedAmount;          // Amount claimed from the pool so far
-        uint256 boostCutoff;            // Unix timestamp after which boosts are rejected (0 = uses status only)
-        bool cancelled;                 // Fight cancelled/no-contest - full refund of principal
+        uint256 pointsForWinner; // Points if you picked correct winner only
+        uint256 pointsForWinnerMethod; // Points if you picked correct winner AND method
+        uint256 claimedAmount; // Amount claimed from the pool so far
+        uint256 boostCutoff; // Unix timestamp after which boosts are rejected (0 = uses status only)
+        bool cancelled; // Fight cancelled/no-contest - full refund of principal
     }
 
     struct Event {
-        uint256 seasonId;        // Which FP season this event uses
-        uint256 numFights;       // Number of fights in the event (fights are 1, 2, 3, ..., numFights)
+        uint256 seasonId; // Which FP season this event uses
+        uint256 numFights; // Number of fights in the event (fights are 1, 2, 3, ..., numFights)
         bool exists;
-        uint256 claimDeadline;   // unix timestamp after which claims are rejected (0 = no limit)
+        uint256 claimDeadline; // unix timestamp after which claims are rejected (0 = no limit)
     }
 
     struct Boost {
         address user;
-        uint256 amount;              // FP staked (can be increased)
+        uint256 amount; // FP staked (can be increased)
         Corner predictedWinner;
         WinMethod predictedMethod;
         bool claimed;
@@ -147,7 +147,7 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
     constructor(address _fp, address admin) {
         require(_fp != address(0), "fp=0");
         require(admin != address(0), "admin=0");
-        
+
         FP = FP1155(_fp);
         minBoostAmount = 0; // Default: no minimum
         _grantRole(DEFAULT_ADMIN_ROLE, admin);
@@ -171,11 +171,10 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
      * @param numFights Number of fights in the event (fights are 1, 2, 3, ..., numFights)
      * @param seasonId Which FP season this event uses
      */
-    function createEvent(
-        string calldata eventId,
-        uint256 numFights,
-        uint256 seasonId
-    ) external onlyRole(OPERATOR_ROLE) {
+    function createEvent(string calldata eventId, uint256 numFights, uint256 seasonId)
+        external
+        onlyRole(OPERATOR_ROLE)
+    {
         require(!events[eventId].exists, "event exists");
         require(numFights > 0, "no fights");
 
@@ -183,12 +182,7 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
         require(FP.seasonStatus(seasonId) == FP1155.SeasonStatus.OPEN, "season not open");
 
         // Create event
-        events[eventId] = Event({
-            seasonId: seasonId,
-            numFights: numFights,
-            exists: true,
-            claimDeadline: 0
-        });
+        events[eventId] = Event({seasonId: seasonId, numFights: numFights, exists: true, claimDeadline: 0});
 
         // Initialize all fights as OPEN (fightIds are 1, 2, 3, ..., numFights)
         for (uint256 i = 1; i <= numFights; i++) {
@@ -204,13 +198,12 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
      * @param fightId Fight number
      * @param newStatus New status (can only move forward)
      */
-    function updateFightStatus(
-        string calldata eventId,
-        uint256 fightId,
-        FightStatus newStatus
-    ) external onlyRole(OPERATOR_ROLE) {
+    function updateFightStatus(string calldata eventId, uint256 fightId, FightStatus newStatus)
+        external
+        onlyRole(OPERATOR_ROLE)
+    {
         require(events[eventId].exists, "event not exists");
-        
+
         Fight storage fight = fights[eventId][fightId];
         FightStatus currentStatus = fight.status;
 
@@ -230,15 +223,14 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
      * @param fightId Fight number
      * @param cutoff Unix timestamp (0 = rely on status only)
      */
-    function setFightBoostCutoff(
-        string calldata eventId,
-        uint256 fightId,
-        uint256 cutoff
-    ) external onlyRole(OPERATOR_ROLE) {
+    function setFightBoostCutoff(string calldata eventId, uint256 fightId, uint256 cutoff)
+        external
+        onlyRole(OPERATOR_ROLE)
+    {
         require(events[eventId].exists, "event not exists");
         Fight storage fight = fights[eventId][fightId];
         require(fight.status != FightStatus.RESOLVED, "fight resolved");
-        
+
         fight.boostCutoff = cutoff;
         emit FightBoostCutoffUpdated(eventId, fightId, cutoff);
     }
@@ -248,12 +240,9 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
      * @param eventId Event identifier
      * @param cutoff Unix timestamp (0 = rely on status only)
      */
-    function setEventBoostCutoff(
-        string calldata eventId,
-        uint256 cutoff
-    ) external onlyRole(OPERATOR_ROLE) {
+    function setEventBoostCutoff(string calldata eventId, uint256 cutoff) external onlyRole(OPERATOR_ROLE) {
         require(events[eventId].exists, "event not exists");
-        
+
         Event storage evt = events[eventId];
         // Iterate through all fights (fightIds are 1, 2, 3, ..., numFights)
         for (uint256 i = 1; i <= evt.numFights; i++) {
@@ -271,19 +260,16 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
      * @param eventId Event identifier
      * @param fightId Fight number
      */
-    function cancelFight(
-        string calldata eventId,
-        uint256 fightId
-    ) external onlyRole(OPERATOR_ROLE) {
+    function cancelFight(string calldata eventId, uint256 fightId) external onlyRole(OPERATOR_ROLE) {
         require(events[eventId].exists, "event not exists");
         Fight storage fight = fights[eventId][fightId];
         require(fight.status != FightStatus.RESOLVED, "fight already resolved");
-        
+
         fight.status = FightStatus.RESOLVED;
         fight.cancelled = true;
         fight.winner = Corner.NONE;
         fight.method = WinMethod.NO_CONTEST;
-        
+
         emit FightCancelled(eventId, fightId);
     }
 
@@ -320,9 +306,9 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
             if (fight.status == FightStatus.RESOLVED) {
                 uint256 poolAmount = fight.originalPool + fight.bonusPool;
                 if (poolAmount == 0) continue;
-                
+
                 uint256 unclaimedPool = poolAmount - fight.claimedAmount;
-                
+
                 if (unclaimedPool > 0) {
                     emit FightPurged(eventId, i, unclaimedPool);
                     totalSweep += unclaimedPool;
@@ -345,11 +331,11 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
      * @param fightId Fight number
      * @param amount Amount of FP to deposit as bonus
      */
-    function depositBonus(
-        string calldata eventId,
-        uint256 fightId,
-        uint256 amount
-    ) external onlyRole(OPERATOR_ROLE) nonReentrant {
+    function depositBonus(string calldata eventId, uint256 fightId, uint256 amount)
+        external
+        onlyRole(OPERATOR_ROLE)
+        nonReentrant
+    {
         require(events[eventId].exists, "event not exists");
         require(amount > 0, "amount=0");
 
@@ -389,11 +375,11 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
         uint256 winningPoolTotalShares
     ) external onlyRole(OPERATOR_ROLE) {
         require(events[eventId].exists, "event not exists");
-        
+
         // Validate points parameters
         require(pointsForWinner > 0, "points for winner must be > 0");
         require(pointsForWinnerMethod >= pointsForWinner, "method points must be >= winner points");
-        
+
         // Validate winner/method consistency
         if (winner == Corner.NONE) {
             require(method == WinMethod.NO_CONTEST, "NONE winner requires NO_CONTEST method");
@@ -431,10 +417,7 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
      * @param eventId Event identifier
      * @param inputs Array of boost inputs
      */
-    function placeBoosts(
-        string calldata eventId,
-        BoostInput[] calldata inputs
-    ) external nonReentrant {
+    function placeBoosts(string calldata eventId, BoostInput[] calldata inputs) external nonReentrant {
         require(events[eventId].exists, "event not exists");
         require(inputs.length > 0, "no boosts");
 
@@ -453,7 +436,7 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
             Fight storage fight = fights[eventId][input.fightId];
             require(fight.status == FightStatus.OPEN, "fight not open");
             require(!fight.cancelled, "fight cancelled");
-            
+
             // Check boost cutoff if set
             if (fight.boostCutoff > 0) {
                 require(block.timestamp < fight.boostCutoff, "boost cutoff passed");
@@ -497,12 +480,10 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
      * @param boostIndex Index of the boost to increase
      * @param additionalAmount Amount of FP to add
      */
-    function addToBoost(
-        string calldata eventId,
-        uint256 fightId,
-        uint256 boostIndex,
-        uint256 additionalAmount
-    ) external nonReentrant {
+    function addToBoost(string calldata eventId, uint256 fightId, uint256 boostIndex, uint256 additionalAmount)
+        external
+        nonReentrant
+    {
         require(events[eventId].exists, "event not exists");
         require(additionalAmount > 0, "amount=0");
         require(additionalAmount >= minBoostAmount, "below min boost");
@@ -513,7 +494,7 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
         Fight storage fight = fights[eventId][fightId];
         require(fight.status == FightStatus.OPEN, "fight not open");
         require(!fight.cancelled, "fight cancelled");
-        
+
         // Check boost cutoff if set
         if (fight.boostCutoff > 0) {
             require(block.timestamp < fight.boostCutoff, "boost cutoff passed");
@@ -543,16 +524,15 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
      * @param fightId Fight number
      * @param boostIndices Array of boost indices to claim
      */
-    function claimReward(
-        string calldata eventId,
-        uint256 fightId,
-        uint256[] calldata boostIndices
-    ) external nonReentrant {
+    function claimReward(string calldata eventId, uint256 fightId, uint256[] calldata boostIndices)
+        external
+        nonReentrant
+    {
         require(events[eventId].exists, "event not exists");
-        
+
         Event storage evt = events[eventId];
         require(fightId >= 1 && fightId <= evt.numFights, "fightId not in event");
-        
+
         uint256 deadline = evt.claimDeadline;
         require(deadline == 0 || block.timestamp <= deadline, "claim deadline passed");
 
@@ -564,11 +544,7 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
 
         // Handle cancelled fight (full refund of principal)
         if (fight.cancelled) {
-            uint256 refund = _processCancelledBoostRefund(
-                fightBoosts,
-                boostIndices,
-                msg.sender
-            );
+            uint256 refund = _processCancelledBoostRefund(fightBoosts, boostIndices, msg.sender);
 
             require(refund > 0, "nothing to refund");
             FP.safeTransferFrom(address(this), msg.sender, seasonId, refund, "");
@@ -584,13 +560,7 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
 
         for (uint256 i = 0; i < boostIndices.length; i++) {
             totalPayout += _processWinningBoostClaim(
-                eventId,
-                fightId,
-                fight,
-                fightBoosts,
-                boostIndices[i],
-                msg.sender,
-                prizePool
+                eventId, fightId, fight, fightBoosts, boostIndices[i], msg.sender, prizePool
             );
         }
 
@@ -605,10 +575,7 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
      * @param eventId Event identifier
      * @param inputs Array of claim inputs, each containing a fightId and boost indices
      */
-    function claimRewards(
-        string calldata eventId,
-        ClaimInput[] calldata inputs
-    ) external nonReentrant {
+    function claimRewards(string calldata eventId, ClaimInput[] calldata inputs) external nonReentrant {
         require(events[eventId].exists, "event not exists");
         require(inputs.length > 0, "no claims");
 
@@ -631,11 +598,7 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
 
             // Handle cancelled fight (full refund of principal)
             if (fight.cancelled) {
-                uint256 refund = _processCancelledBoostRefund(
-                    fightBoosts,
-                    input.boostIndices,
-                    msg.sender
-                );
+                uint256 refund = _processCancelledBoostRefund(fightBoosts, input.boostIndices, msg.sender);
 
                 if (refund > 0) {
                     totalPayout += refund;
@@ -653,13 +616,7 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
 
             for (uint256 i = 0; i < input.boostIndices.length; i++) {
                 totalPayout += _processWinningBoostClaim(
-                    eventId,
-                    input.fightId,
-                    fight,
-                    fightBoosts,
-                    input.boostIndices[i],
-                    msg.sender,
-                    prizePool
+                    eventId, input.fightId, fight, fightBoosts, input.boostIndices[i], msg.sender, prizePool
                 );
             }
         }
@@ -771,12 +728,12 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
     {
         uint256[] storage indices = userBoostIndices[eventId][fightId][user];
         Boost[] storage allBoosts = boosts[eventId][fightId];
-        
+
         Boost[] memory userBoosts = new Boost[](indices.length);
         for (uint256 i = 0; i < indices.length; i++) {
             userBoosts[i] = allBoosts[indices[i]];
         }
-        
+
         return userBoosts;
     }
 
@@ -790,12 +747,11 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
      * @param user User address
      * @param enforceDeadline Whether to revert if claim deadline passed
      */
-    function quoteClaimable(
-        string calldata eventId,
-        uint256 fightId,
-        address user,
-        bool enforceDeadline
-    ) external view returns (uint256 totalClaimable) {
+    function quoteClaimable(string calldata eventId, uint256 fightId, address user, bool enforceDeadline)
+        external
+        view
+        returns (uint256 totalClaimable)
+    {
         Event storage evt = events[eventId];
         require(evt.exists, "event not exists");
         Fight storage fight = fights[eventId][fightId];
@@ -893,11 +849,10 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
      * @param user Address claiming the refund
      * @return refund Total refund amount
      */
-    function _processCancelledBoostRefund(
-        Boost[] storage fightBoosts,
-        uint256[] calldata boostIndices,
-        address user
-    ) internal returns (uint256 refund) {
+    function _processCancelledBoostRefund(Boost[] storage fightBoosts, uint256[] calldata boostIndices, address user)
+        internal
+        returns (uint256 refund)
+    {
         refund = 0;
         for (uint256 i = 0; i < boostIndices.length; i++) {
             uint256 index = boostIndices[i];
@@ -957,19 +912,14 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
         payout = winnings + boost.amount;
 
         boost.claimed = true;
-        
+
         fight.claimedAmount += payout;
 
         emit RewardClaimed(eventId, fightId, user, boostIndex, payout, points);
     }
 
     // ============ Interface Support ============
-    function supportsInterface(bytes4 interfaceId)
-        public
-        view
-        override(AccessControl, ERC1155Holder)
-        returns (bool)
-    {
+    function supportsInterface(bytes4 interfaceId) public view override(AccessControl, ERC1155Holder) returns (bool) {
         return super.supportsInterface(interfaceId);
     }
 }

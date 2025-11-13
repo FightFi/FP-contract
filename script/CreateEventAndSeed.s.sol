@@ -113,12 +113,10 @@ contract CreateEventAndSeed is Script {
                 if (amt == 0) continue;
                 Booster.BoostInput[] memory arr = new Booster.BoostInput[](1);
                 Booster.Corner winPred = i < P.boostWinners.length ? P.boostWinners[i] : Booster.Corner.RED;
-                Booster.WinMethod methodPred = i < P.boostMethods.length ? P.boostMethods[i] : Booster.WinMethod.KNOCKOUT;
+                Booster.WinMethod methodPred =
+                    i < P.boostMethods.length ? P.boostMethods[i] : Booster.WinMethod.KNOCKOUT;
                 arr[0] = Booster.BoostInput({
-                    fightId: P.fights[i],
-                    amount: amt,
-                    predictedWinner: winPred,
-                    predictedMethod: methodPred
+                    fightId: P.fights[i], amount: amt, predictedWinner: winPred, predictedMethod: methodPred
                 });
                 booster.placeBoosts(eventId, arr);
                 console2.log("Placed operator boost", amt, "for fight", P.fights[i]);
@@ -128,7 +126,11 @@ contract CreateEventAndSeed is Script {
         // Optionally resolve fights
         if (resolve) {
             for (uint256 i = 0; i < P.fights.length; i++) {
-                if (i >= P.resultWinners.length || i >= P.resultMethods.length || i >= P.pointsWinner.length || i >= P.pointsWinnerMethod.length || i >= P.sumWinnersStakes.length || i >= P.winningPoolTotalShares.length) {
+                if (
+                    i >= P.resultWinners.length || i >= P.resultMethods.length || i >= P.pointsWinner.length
+                        || i >= P.pointsWinnerMethod.length || i >= P.sumWinnersStakes.length
+                        || i >= P.winningPoolTotalShares.length
+                ) {
                     console2.log("Skip resolve; missing data for fight", P.fights[i]);
                     continue;
                 }
@@ -167,14 +169,19 @@ contract CreateEventAndSeed is Script {
         bytes memory b = bytes(csv);
         if (b.length == 0) return new uint256[](0);
         uint256 count = 1;
-        for (uint256 i = 0; i < b.length; i++) if (b[i] == ",") count++;
+        for (uint256 i = 0; i < b.length; i++) {
+            if (b[i] == ",") count++;
+        }
         out = new uint256[](count);
-        uint256 idx = 0; uint256 start = 0;
+        uint256 idx = 0;
+        uint256 start = 0;
         for (uint256 i = 0; i <= b.length; i++) {
             if (i == b.length || b[i] == ",") {
                 uint256 len = i - start;
                 bytes memory slice = new bytes(len);
-                for (uint256 j = start; j < i; j++) slice[j - start] = b[j];
+                for (uint256 j = start; j < i; j++) {
+                    slice[j - start] = b[j];
+                }
                 out[idx++] = _toUint(string(slice));
                 start = i + 1;
             }

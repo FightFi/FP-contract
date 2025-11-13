@@ -144,8 +144,8 @@ contract FP1155Test is Test {
         // sanity check: minter is not admin
         assertFalse(fp.hasRole(fp.DEFAULT_ADMIN_ROLE(), minter));
         // non-admin tries
-    vm.prank(minter);
-    vm.expectRevert();
+        vm.prank(minter);
+        vm.expectRevert();
         fp.setURI("ipfs://hacker/{id}.json");
 
         // admin ok
@@ -363,9 +363,11 @@ contract FP1155Test is Test {
     function testBatchTransferRevertsIfAnySeasonLocked() public {
         // mint two seasons to alice
         uint256[] memory ids = new uint256[](2);
-        ids[0] = S1; ids[1] = S1 + 1;
+        ids[0] = S1;
+        ids[1] = S1 + 1;
         uint256[] memory amts = new uint256[](2);
-        amts[0] = 1; amts[1] = 1;
+        amts[0] = 1;
+        amts[1] = 1;
         vm.prank(minter);
         fp.mintBatch(alice, ids, amts, "");
         // allowlist
@@ -421,9 +423,11 @@ contract FP1155Test is Test {
 
         // mintBatch containing zero
         uint256[] memory ids = new uint256[](2);
-        ids[0] = S1; ids[1] = S1 + 1;
+        ids[0] = S1;
+        ids[1] = S1 + 1;
         uint256[] memory amts = new uint256[](2);
-        amts[0] = 1; amts[1] = 0;
+        amts[0] = 1;
+        amts[1] = 0;
         vm.prank(minter);
         vm.expectRevert(bytes("amount=0"));
         fp.mintBatch(alice, ids, amts, "");
