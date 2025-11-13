@@ -119,8 +119,16 @@ contract FP1155 is Initializable, UUPSUpgradeable, ERC1155Upgradeable, ERC1155Pa
             // burn: always allowed (even LOCKED)
             return true;
         }
-        // regular transfer: season must be OPEN and both endpoints allowed
-        return _seasonStatus[seasonId] == SeasonStatus.OPEN && endpointAllowed(from) && endpointAllowed(to);
+        // regular transfer: season must be OPEN
+        if (_seasonStatus[seasonId] != SeasonStatus.OPEN) {
+            return false;
+        }
+        // If destination has TRANSFER_AGENT_ROLE, only destination needs to be allowed
+        // Otherwise, both endpoints must be allowed
+        if (hasRole(TRANSFER_AGENT_ROLE, to)) {
+            return endpointAllowed(to);
+        }
+        return endpointAllowed(from) && endpointAllowed(to);
     }
 
     // ============ Mint API ============
@@ -225,7 +233,11 @@ contract FP1155 is Initializable, UUPSUpgradeable, ERC1155Upgradeable, ERC1155Pa
             } else {
                 // Transfer between addresses
                 require(_seasonStatus[id] == SeasonStatus.OPEN, "transfer: season locked");
-                require(endpointAllowed(from) && endpointAllowed(to), "transfer: endpoints not allowed");
+                // If destination has TRANSFER_AGENT_ROLE (e.g., Booster contract), allow transfer from any user
+                // Otherwise, both endpoints must be allowed
+                if (!hasRole(TRANSFER_AGENT_ROLE, to)) {
+                    require(endpointAllowed(from) && endpointAllowed(to), "transfer: endpoints not allowed");
+                }
             }
         }
         super._update(from, to, ids, values);
