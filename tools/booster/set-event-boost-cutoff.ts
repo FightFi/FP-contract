@@ -14,13 +14,13 @@
 
  * 
  * @example Disable cutoff (set to 0, relies on status only)
- * ts-node tools/booster/set-event-boost-cutoff.ts --eventId UFC_300 --cutoff 0
+ * ts-node tools/booster/set-event-boost-cutoff.ts --eventId 322 --cutoff 0
  * 
  * @example Using alternative parameter names
- * ts-node tools/booster/set-event-boost-cutoff.ts --event UFC_300 --timestamp 1704067200
+ * ts-node tools/booster/set-event-boost-cutoff.ts --event 322 --timestamp 1763247600
  * 
  * @example With custom contract address
- * ts-node tools/booster/set-event-boost-cutoff.ts --contract 0x123... --eventId UFC_300 --cutoff 1704067200
+ * ts-node tools/booster/set-event-boost-cutoff.ts --contract 0x123... --eventId 322 --cutoff 1763247600
  */
 import 'dotenv/config';
 import { ethers } from 'ethers';
