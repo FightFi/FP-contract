@@ -7,6 +7,8 @@
 **Admin/Season Admin:** 0xac5d932D7a16D74F713309be227659d387c69429
 **CLAIM_SIGNER_ROLE:** 0x02D525601e60c2448Abb084e4020926A2Ae5cB01
 **MINTER_ROLE:** 0xBf797273B60545882711f003094C065351a9CD7B
+**Base URI Update (Mainnet):** set via `setURI("https://assets.fight.foundation/fp/{id}.json")`
+  - Tx: `0x2639b6a9789819550e6f242dce30f45dd476508049ee71e3651a3fb8e220cfa1`
 ## ⚠️ Important: Upgradeable Contract
 
 **FP1155 is now upgradeable using the UUPS (Universal Upgradeable Proxy Standard) pattern.**
@@ -46,17 +48,44 @@ Both mainnet and testnet had non-upgradeable deployments:
   - Verified: https://bscscan.com/address/0x5E845Db62fDF02451cfC98be1e9927eB48a42fce#code
 
 ### BSC Testnet (Chain 97)
-- Previous testnet deploy (superseded): `0x5Fa58c84606Eba7000eCaF24C918086B094Db39a` (admin mistakenly set to `0x1804...`).
 
-#### Fresh Testnet Deployment (Active)
-- **Contract Address:** `0xD0B591751E6aa314192810471461bDE963796306`
-- **Deployer/Admin:** `0xBf797273B60545882711f003094C065351a9CD7B`
-- **Deploy Transaction:** `0x998beae5e01058145832978d6f6311ca81f13ed7edb4aa1f8e5bf42249a020b5`
-- **Block:** 71491008
-- **Explorer:** https://testnet.bscscan.com/address/0xD0B591751E6aa314192810471461bDE963796306
-- **Status:** ⏳ Verification in progress
-- **Gas Used:** 4,509,644 (~0.0004509644 BNB @ 0.1 gwei)
-- **Deployment Date:** November 6, 2025
+- Previous testnet deploy (legacy, superseded): `0x5Fa58c84606Eba7000eCaF24C918086B094Db39a` (admin mistakenly set to `0x1804...`).
+
+#### Redeploy (UUPS Proxy) — Active
+- Date: November 13, 2025
+- Base URI: `https://assets.fight.foundation/fp/{id}.json`
+- Admin: `0xBf797273B60545882711f003094C065351a9CD7B`
+- Implementation (logic): `0xFf2c7902FF6388553D1125Ca26545e30eaA1A4e6`
+  - Tx: `0x9b8b4880ddce58d74774b30852d4889aa7af0407185a8345b31f3e0c4d317df7`
+  - Verified: https://testnet.bscscan.com/address/0xff2c7902ff6388553d1125ca26545e30eaa1a4e6#code
+- Proxy (use this for all interactions): `0x5E845Db62fDF02451cfC98be1e9927eB48a42fce`
+  - Tx: `0xfe5db62aabff22d500a0c4b4a676bb46c2f190b869ce5e4b3b867dfba602c009`
+  - Verified (ERC1967Proxy): https://testnet.bscscan.com/address/0x5e845db62fdf02451cfc98be1e9927eb48a42fce#code
+
+Notes:
+- The prior non-proxy testnet address is deprecated and not upgradeable.
+- Always point apps and scripts to the proxy address above.
+
+#### Booster (Testnet) — Using new FP1155 proxy
+- Booster Address: `0x09107f150E478f7D81b35870e8c73c9Fb01Eda6B`
+- Deployer/Admin: `0xBf797273B60545882711f003094C065351a9CD7B`
+- FP1155 (proxy): `0x5E845Db62fDF02451cfC98be1e9927eB48a42fce`
+- Transactions:
+  - Deploy Booster (CREATE): `0x126787596abaa8c592b1256e0cefb1b5661638ebcb73bffd215680b4d55adc89`
+  - FP1155 grant TRANSFER_AGENT_ROLE → Booster: `0xc48bd3e6680d143bb3b3bfe3d4f63b177094de9bc252eddfbc242cf9dca47bd5`
+  - FP1155 allowlist Booster: `0xebf7c5dc8122f4dc11dd2cd68c988bbfb2d326c8c6d07f3c8bee4b519f3da8e3`
+  - FP1155 allowlist Operator: `0xec68af926a1c8001f5a30cedc4a7d53b0e149a336474721a6eae2dafe13a4c62`
+  - Booster grant OPERATOR_ROLE → 0x3fDDF486b3f539F24aBD845674F18AE33Af668f8: `0xfdc551d71255214373c95041b760845d933886c3287124ec4856dde708f2a257`
+- Verification:
+  - Verified: https://testnet.bscscan.com/address/0x09107f150e478f7d81b35870e8c73c9fb01eda6b#code
+
+#### Role grants (Testnet FP1155 proxy)
+- CLAIM_SIGNER_ROLE → 0x3fDDF486b3f539F24aBD845674F18AE33Af668f8
+  - Tx: `0x4be4756d6c68f853f8dc4124b4015dc83676e67230a10ca422cad33414ea4348`
+
+#### Allowlist updates (Testnet FP1155 proxy)
+- Added to transfer allowlist → `0x91341dbc9f531fedcf790b7cae85f997a8e1e9d4`
+  - Tx: `0x2342b914e8ba3a19c8cf472fff48656b0899c188d7d399fe4c4014153c6bfe96`
 
 ## Constructor Parameters
 
@@ -226,7 +255,7 @@ cast send 0x5Fa58c84606Eba7000eCaF24C918086B094Db39a \
 
 Update your `.env` file with the deployed contract address:
 ```bash
-FP1155_ADDRESS=0xD0B591751E6aa314192810471461bDE963796306
+FP1155_ADDRESS=0x5E845Db62fDF02451cfC98be1e9927eB48a42fce
 ```
 
 ## Testing the Deployment
