@@ -1,0 +1,96 @@
+{
+  "eventId": "UFC_322",
+  "fights": [
+    {
+      "fightId": 1,
+      "winner": "RED",
+      "method": "KNOCKOUT",
+      "pointsForWinner": "10",
+      "pointsForWinnerMethod": "20",
+      "sumWinnersStakes": "10000000000000000000",
+      "winningPoolTotalShares": "200000000000000000000"
+    },
+    {
+      "fightId": 2,
+      "winner": "BLUE",
+      "method": "DECISION",
+      "pointsForWinner": "10",
+      "pointsForWinnerMethod": "15",
+      "sumWinnersStakes": "5000000000000000000",
+      "winningPoolTotalShares": "75000000000000000000"
+    },
+    {
+      "fightId": 3,
+      "winner": "RED",
+      "method": "SUBMISSION",
+      "pointsForWinner": "10",
+      "pointsForWinnerMethod": "20",
+      "sumWinnersStakes": "8000000000000000000",
+      "winningPoolTotalShares": "160000000000000000000"
+    },
+    {
+      "fightId": 4,
+      "winner": "BLUE",
+      "method": "KNOCKOUT",
+      "pointsForWinner": "10",
+      "pointsForWinnerMethod": "20",
+      "sumWinnersStakes": "12000000000000000000",
+      "winningPoolTotalShares": "240000000000000000000"
+    },
+    {
+      "fightId": 5,
+      "winner": "RED",
+      "method": "DECISION",
+      "pointsForWinner": "10",
+      "pointsForWinnerMethod": "15",
+      "sumWinnersStakes": "6000000000000000000",
+      "winningPoolTotalShares": "90000000000000000000"
+    },
+    {
+      "fightId": 6,
+      "winner": "BLUE",
+      "method": "SUBMISSION",
+      "pointsForWinner": "10",
+      "pointsForWinnerMethod": "20",
+      "sumWinnersStakes": "9000000000000000000",
+      "winningPoolTotalShares": "180000000000000000000"
+    },
+    {
+      "fightId": 7,
+      "winner": "RED",
+      "method": "KNOCKOUT",
+      "pointsForWinner": "10",
+      "pointsForWinnerMethod": "20",
+      "sumWinnersStakes": "11000000000000000000",
+      "winningPoolTotalShares": "220000000000000000000"
+    },
+    {
+      "fightId": 8,
+      "winner": "BLUE",
+      "method": "DECISION",
+      "pointsForWinner": "10",
+      "pointsForWinnerMethod": "15",
+      "sumWinnersStakes": "7000000000000000000",
+      "winningPoolTotalShares": "105000000000000000000"
+    },
+    {
+      "fightId": 9,
+      "winner": "RED",
+      "method": "SUBMISSION",
+      "pointsForWinner": "10",
+      "pointsForWinnerMethod": "20",
+      "sumWinnersStakes": "8500000000000000000",
+      "winningPoolTotalShares": "170000000000000000000"
+    },
+    {
+      "fightId": 10,
+      "winner": "BLUE",
+      "method": "KNOCKOUT",
+      "pointsForWinner": "10",
+      "pointsForWinnerMethod": "20",
+      "sumWinnersStakes": "13000000000000000000",
+      "winningPoolTotalShares": "260000000000000000000"
+    }
+  ]
+}
+

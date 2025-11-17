@@ -12,6 +12,7 @@
     "deploy": "hardhat run --network bscTestnet scripts/deploy.ts",
     "sign:claim": "ts-node tools/sign-claim.ts",
     "submit:claim": "ts-node tools/submit-claim.ts",
+    "mint:stats": "ts-node tools/compute-mint-stats.ts",
     "env:check:deploy": "ts-node tools/validate-env.ts deploy",
     "env:check:sign-claim": "ts-node tools/validate-env.ts sign-claim",
     "env:check:submit-claim": "ts-node tools/validate-env.ts submit-claim",

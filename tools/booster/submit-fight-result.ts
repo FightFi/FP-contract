@@ -38,22 +38,23 @@
  *   --winningPoolTotalShares 200000000000000000000
  *
  * @example Using alternative parameter names
- * ts-node tools/booster/submit-fight-result.ts \
- *   --network testnet \
- *   --event UFC_300 \
- *   --fight 1 \
- *   --winner RED \
- *   --method KO \
- *   --pointsWinner 10 \
- *   --pointsMethod 20 \
- *   --sumStakes 10000000000000000000 \
- *   --totalShares 200000000000000000000
- *
+  ts-node tools/booster/submit-fight-result.ts \
+    --network testnet \
+    --event 322 \
+    --fight 1 \
+    --winner blue \
+    --method Decision \
+    --pointsWinner 3 \
+    --pointsMethod 4 \
+    --sumStakes 4511 \
+    --totalShares 14743
+ 
  * Winner values: RED (0), BLUE (1), NONE (2)
  * Method values: KNOCKOUT/KO (0), SUBMISSION/SUB (1), DECISION/DEC (2), NO_CONTEST (3)
  */
 import "dotenv/config";
 import { ethers } from "ethers";
+import * as readline from "readline";
 
 // Corner enum: RED=0, BLUE=1, NONE=2
 // WinMethod enum: KNOCKOUT=0, SUBMISSION=1, DECISION=2, NO_CONTEST=3
@@ -76,7 +77,9 @@ function getRpcUrl(args: Record<string, string>): string {
   const envVar = NETWORK_ENV_MAP[networkName.toLowerCase()];
   if (!envVar) {
     throw new Error(
-      `Unknown network "${networkName}". Supported: ${Object.keys(NETWORK_ENV_MAP).join(", ")}`
+      `Unknown network "${networkName}". Supported: ${Object.keys(
+        NETWORK_ENV_MAP
+      ).join(", ")}`
     );
   }
 
@@ -88,6 +91,34 @@ function getRpcUrl(args: Record<string, string>): string {
   }
 
   return url;
+}
+
+// Helper function to format method name
+function getMethodName(method: number): string {
+  const methods = ["KNOCKOUT", "SUBMISSION", "DECISION", "NO_CONTEST"];
+  return methods[method] || `UNKNOWN (${method})`;
+}
+
+// Helper function to format winner name
+function getWinnerName(winner: number): string {
+  const winners = ["RED", "BLUE", "NONE"];
+  return winners[winner] || `UNKNOWN (${winner})`;
+}
+
+// Function to ask for user confirmation
+function askConfirmation(question: string): Promise<boolean> {
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+
+  return new Promise((resolve) => {
+    rl.question(question, (answer) => {
+      rl.close();
+      const normalized = answer.trim().toLowerCase();
+      resolve(normalized === "y" || normalized === "yes");
+    });
+  });
 }
 
 async function main() {
@@ -165,15 +196,36 @@ async function main() {
     throw new Error("--winningPoolTotalShares (or --totalShares) must be > 0");
 
   const booster = new ethers.Contract(contract, ABI, wallet);
-  console.log(`Submitting fight result:`);
-  console.log(`  Event: ${eventId}`);
-  console.log(`  FightId: ${fightId}`);
-  console.log(`  Winner: ${winner} (${winnerStr})`);
-  console.log(`  Method: ${method} (${methodStr})`);
-  console.log(`  Points for winner: ${pointsForWinner}`);
-  console.log(`  Points for winner+method: ${pointsForWinnerMethod}`);
-  console.log(`  Sum winners stakes: ${sumWinnersStakes}`);
-  console.log(`  Winning pool total shares: ${winningPoolTotalShares}`);
+
+  // Display comprehensive review of all parameters
+  console.log("\n" + "=".repeat(60));
+  console.log("PARAMETER REVIEW - SUBMIT FIGHT RESULT");
+  console.log("=".repeat(60));
+  console.log(`Network:           ${args.network || args.net}`);
+  console.log(`Contract Address:  ${contract}`);
+  console.log(`Wallet Address:    ${wallet.address}`);
+  console.log(`Event ID:          ${eventId}`);
+  console.log(`Fight ID:          ${fightId}`);
+  console.log(`Winner:            ${getWinnerName(winner)} (${winner})`);
+  console.log(`Method:            ${getMethodName(method)} (${method})`);
+  console.log(`Points (Winner):   ${pointsForWinner}`);
+  console.log(`Points (Winner+Method): ${pointsForWinnerMethod}`);
+  console.log(`Sum Winners Stakes: ${sumWinnersStakes}`);
+  console.log(`Winning Pool Shares: ${winningPoolTotalShares}`);
+  console.log("=".repeat(60));
+  console.log("");
+
+  // Ask for confirmation before proceeding
+  const confirmed = await askConfirmation(
+    "Do you want to submit this transaction? (y/n): "
+  );
+
+  if (!confirmed) {
+    console.log("\n❌ Transaction cancelled by user.");
+    process.exit(0);
+  }
+
+  console.log("\n⏳ Sending transaction...\n");
 
   const tx = await booster.submitFightResult(
     eventId,
@@ -185,9 +237,10 @@ async function main() {
     sumWinnersStakes,
     winningPoolTotalShares
   );
-  console.log("Submitted submitFightResult tx:", tx.hash);
+  console.log("✅ Transaction sent:", tx.hash);
+  console.log("⏳ Waiting for confirmation...");
   const rcpt = await tx.wait();
-  console.log("Mined in block", rcpt.blockNumber);
+  console.log("✅ Transaction confirmed in block:", rcpt.blockNumber);
 }
 
 function parseArgs(argv: string[]) {
