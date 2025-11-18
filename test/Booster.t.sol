@@ -1895,9 +1895,12 @@ contract BoosterTest is Test {
 
     function testRevert_claimRewards_invalidFightId() public {
         _createDefaultEvent();
+        _placeMultipleBoosts();
 
         vm.prank(operator);
-        booster.submitFightResult(EVENT_1, FIGHT_1, Booster.Corner.RED, Booster.WinMethod.KNOCKOUT, 10, 20, 10, 2);
+        booster.submitFightResult(
+            EVENT_1, FIGHT_1, Booster.Corner.RED, Booster.WinMethod.KNOCKOUT, 10, 20, 100 ether, 2000 ether
+        );
 
         // Mark event as claim ready
         _setEventClaimReady(EVENT_1);
@@ -1914,9 +1917,12 @@ contract BoosterTest is Test {
 
     function testRevert_claimRewards_emptyBoostIndices() public {
         _createDefaultEvent();
+        _placeMultipleBoosts();
 
         vm.prank(operator);
-        booster.submitFightResult(EVENT_1, FIGHT_1, Booster.Corner.RED, Booster.WinMethod.KNOCKOUT, 10, 20, 10, 2);
+        booster.submitFightResult(
+            EVENT_1, FIGHT_1, Booster.Corner.RED, Booster.WinMethod.KNOCKOUT, 10, 20, 100 ether, 2000 ether
+        );
 
         // Mark event as claim ready
         _setEventClaimReady(EVENT_1);

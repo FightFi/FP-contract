@@ -449,6 +449,9 @@ contract Booster is
         // Cannot update results once event is claim ready
         require(!events[eventId].claimReady, "event claim ready");
 
+        Event storage evt = events[eventId];
+        require(fightId >= 1 && fightId <= evt.numFights, "fightId not in event");
+
         // Validate points parameters
         require(pointsForWinner > 0, "points for winner must be > 0");
         require(pointsForWinnerMethod >= pointsForWinner, "method points must be >= winner points");
@@ -456,10 +459,22 @@ contract Booster is
         // Validate winner/method consistency
         if (winner == Corner.NONE) {
             require(method == WinMethod.NO_CONTEST, "NONE winner requires NO_CONTEST method");
+        } else {
+            // if there are winners, sumWinnersStakes and winningPoolTotalShares must be > 0
+            if (sumWinnersStakes > 0) {
+                require(winningPoolTotalShares > 0, "winningPoolTotalShares must be > 0 if sumWinnersStakes > 0");
+            }
+            if (winningPoolTotalShares > 0) {
+                require(sumWinnersStakes > 0, "sumWinnersStakes must be > 0 if winningPoolTotalShares > 0");
+            }
         }
 
         Fight storage fight = fights[eventId][fightId];
         require(!fight.cancelled, "fight cancelled");
+        // If there are winners, they must be a subset of all users who placed boosts
+        if (sumWinnersStakes > 0) {
+            require(sumWinnersStakes <= fight.originalPool, "sumWinnersStakes exceeds originalPool");
+        }
 
         // Store result
         fight.status = FightStatus.RESOLVED;
@@ -610,6 +625,7 @@ contract Booster is
         nonReentrant
     {
         require(events[eventId].exists, "event not exists");
+        require(boostIndices.length > 0, "no boost indices");
 
         Event storage evt = events[eventId];
         require(fightId >= 1 && fightId <= evt.numFights, "fightId not in event");
@@ -637,6 +653,8 @@ contract Booster is
         // Normal claim flow (winning boosts)
         // If no winners, no one can claim rewards (check early to avoid unnecessary computation)
         require(fight.sumWinnersStakes > 0 && fight.winningPoolTotalShares > 0, "no winners");
+        // Ensure sumWinnersStakes doesn't exceed originalPool (winners are subset of all users)
+        require(fight.sumWinnersStakes <= fight.originalPool, "invalid winners stakes");
         uint256 totalPayout = 0;
 
         uint256 prizePool = fight.originalPool - fight.sumWinnersStakes + fight.bonusPool;
