@@ -71,8 +71,9 @@ contract BoosterTest is Test {
         booster.createEvent(EVENT_1, numFights, SEASON_1, 0);
 
         // Verify event exists
-        (uint256 seasonId, uint256 storedNumFights, bool exists) = booster.getEvent(EVENT_1);
+        (uint256 seasonId, uint256 storedNumFights, bool exists, bool claimReady) = booster.getEvent(EVENT_1);
         assertTrue(exists);
+        assertFalse(claimReady); // Should be false initially
         assertEq(seasonId, SEASON_1);
         assertEq(storedNumFights, 3);
 
@@ -531,12 +532,15 @@ contract BoosterTest is Test {
         booster.submitFightResult(EVENT_1, FIGHT_1, Booster.Corner.RED, Booster.WinMethod.KNOCKOUT, 10, 20, 3, 30);
     }
 
-    function testRevert_submitFightResult_alreadyResolved() public {
+    function testRevert_submitFightResult_alreadyClaimReady() public {
         _createDefaultEvent();
         _placeBoostsAndResolve();
 
+        // Mark event as claim ready - now results cannot be updated
+        _setEventClaimReady(EVENT_1);
+
         vm.prank(operator);
-        vm.expectRevert("already resolved");
+        vm.expectRevert("event claim ready");
         booster.submitFightResult(EVENT_1, FIGHT_1, Booster.Corner.RED, Booster.WinMethod.KNOCKOUT, 10, 20, 10, 3);
     }
 
@@ -592,6 +596,9 @@ contract BoosterTest is Test {
             0, // sumWinnersStakes
             0 // winningPoolTotalShares
         );
+
+        // Mark event as claim ready
+        _setEventClaimReady(EVENT_1);
 
         // Try to claim - should revert because no winners
         uint256[] memory indices = booster.getUserBoostIndices(EVENT_1, FIGHT_1, user1);
@@ -656,6 +663,9 @@ contract BoosterTest is Test {
             EVENT_1, FIGHT_1, Booster.Corner.RED, Booster.WinMethod.KNOCKOUT, 10, 20, 300 ether, 4000 ether
         );
 
+        // Mark event as claim ready
+        _setEventClaimReady(EVENT_1);
+
         // Fetch correct index for user1 boost
         uint256[] memory indices1 = booster.getUserBoostIndices(EVENT_1, FIGHT_1, user1);
         assertEq(indices1.length, 1);
@@ -711,6 +721,9 @@ contract BoosterTest is Test {
             EVENT_1, FIGHT_1, Booster.Corner.RED, Booster.WinMethod.KNOCKOUT, 10, 20, 100 ether, 2000 ether
         );
 
+        // Mark event as claim ready
+        _setEventClaimReady(EVENT_1);
+
         uint256[] memory indices = new uint256[](1);
         indices[0] = 0;
 
@@ -747,6 +760,9 @@ contract BoosterTest is Test {
         booster.submitFightResult(
             EVENT_1, FIGHT_1, Booster.Corner.RED, Booster.WinMethod.KNOCKOUT, 10, 20, 150 ether, 2500 ether
         );
+
+        // Mark event as claim ready
+        _setEventClaimReady(EVENT_1);
 
         // Claim both boosts at once
         uint256[] memory indices = new uint256[](2);
@@ -940,6 +956,8 @@ contract BoosterTest is Test {
         vm.prank(operator);
         booster.setEventClaimDeadline(EVENT_1, block.timestamp + 10);
         vm.warp(block.timestamp + 11);
+        // Mark event as claim ready
+        _setEventClaimReady(EVENT_1);
         uint256[] memory indices = new uint256[](1);
         indices[0] = 0;
         vm.prank(user1);
@@ -970,6 +988,9 @@ contract BoosterTest is Test {
 
         // user1 claims: prizePool = 300 - 300 + 0 = 0, so gets back stake (100) + 0 = 100 ether
         // Actually, with the new formula: userShares = 20*100 = 2000, winnings = (0*2000)/4000 = 0
+        // Mark event as claim ready
+        _setEventClaimReady(EVENT_1);
+
         // So user1 gets: 100 + 0 = 100 ether (just stake back)
         uint256[] memory indices1 = booster.getUserBoostIndices(EVENT_1, FIGHT_1, user1);
         vm.prank(user1);
@@ -1000,6 +1021,9 @@ contract BoosterTest is Test {
         _createDefaultEvent();
         _placeMultipleBoosts();
 
+        // Mark event as claim ready (even though fight is not resolved)
+        _setEventClaimReady(EVENT_1);
+
         uint256[] memory indices = new uint256[](1);
         indices[0] = 0;
 
@@ -1012,6 +1036,9 @@ contract BoosterTest is Test {
         _createDefaultEvent();
         _placeBoostsAndResolve();
 
+        // Mark event as claim ready
+        _setEventClaimReady(EVENT_1);
+
         uint256[] memory indices = new uint256[](1);
         indices[0] = 0;
 
@@ -1023,6 +1050,9 @@ contract BoosterTest is Test {
     function testRevert_claimReward_alreadyClaimed() public {
         _createDefaultEvent();
         _placeBoostsAndResolve();
+
+        // Mark event as claim ready
+        _setEventClaimReady(EVENT_1);
 
         uint256[] memory indices = new uint256[](1);
         indices[0] = 0;
@@ -1047,6 +1077,9 @@ contract BoosterTest is Test {
         // Resolve: BLUE wins
         vm.prank(operator);
         booster.submitFightResult(EVENT_1, FIGHT_1, Booster.Corner.BLUE, Booster.WinMethod.KNOCKOUT, 10, 20, 10, 2);
+
+        // Mark event as claim ready
+        _setEventClaimReady(EVENT_1);
 
         uint256[] memory indices = new uint256[](1);
         indices[0] = 0;
@@ -1127,6 +1160,11 @@ contract BoosterTest is Test {
         );
     }
 
+    function _setEventClaimReady(string memory eventId) internal {
+        vm.prank(operator);
+        booster.setEventClaimReady(eventId);
+    }
+
     // ============ Cancellation Tests ============
 
     function test_cancelFight_refundsAll() public {
@@ -1145,6 +1183,9 @@ contract BoosterTest is Test {
         // Verify fight marked as cancelled
         (,,,,,,,,,,, bool cancelled) = booster.getFight(EVENT_1, FIGHT_1);
         assertTrue(cancelled);
+
+        // Mark event as claim ready
+        _setEventClaimReady(EVENT_1);
 
         // User1 claims refund
         uint256[] memory indices1 = booster.getUserBoostIndices(EVENT_1, FIGHT_1, user1);
@@ -1552,6 +1593,9 @@ contract BoosterTest is Test {
             EVENT_1, FIGHT_2, Booster.Corner.BLUE, Booster.WinMethod.SUBMISSION, 10, 20, 400 ether, 6000 ether
         );
 
+        // Mark event as claim ready
+        _setEventClaimReady(EVENT_1);
+
         // Claim rewards from both fights in one transaction
         // Only claim winning boosts (indices 0 and 2 for FIGHT_1, indices 0 and 2 for FIGHT_2)
         Booster.ClaimInput[] memory claims = new Booster.ClaimInput[](2);
@@ -1620,6 +1664,9 @@ contract BoosterTest is Test {
             EVENT_1, FIGHT_2, Booster.Corner.BLUE, Booster.WinMethod.SUBMISSION, 10, 20, 200 ether, 4000 ether
         );
 
+        // Mark event as claim ready
+        _setEventClaimReady(EVENT_1);
+
         // Claim rewards
         Booster.ClaimInput[] memory claims = new Booster.ClaimInput[](2);
         uint256[] memory indices1 = booster.getUserBoostIndices(EVENT_1, FIGHT_1, user1);
@@ -1669,6 +1716,9 @@ contract BoosterTest is Test {
             EVENT_1, FIGHT_2, Booster.Corner.BLUE, Booster.WinMethod.SUBMISSION, 10, 20, 200 ether, 4000 ether
         );
 
+        // Mark event as claim ready
+        _setEventClaimReady(EVENT_1);
+
         // Claim from both fights
         Booster.ClaimInput[] memory claims = new Booster.ClaimInput[](2);
         uint256[] memory indices1 = booster.getUserBoostIndices(EVENT_1, FIGHT_1, user1);
@@ -1714,6 +1764,9 @@ contract BoosterTest is Test {
             EVENT_1, FIGHT_2, Booster.Corner.BLUE, Booster.WinMethod.SUBMISSION, 10, 20, 200 ether, 4000 ether
         );
 
+        // Mark event as claim ready
+        _setEventClaimReady(EVENT_1);
+
         // Claim from both fights - fight 1 should be skipped
         Booster.ClaimInput[] memory claims = new Booster.ClaimInput[](2);
         uint256[] memory indices1 = booster.getUserBoostIndices(EVENT_1, FIGHT_1, user1);
@@ -1751,6 +1804,9 @@ contract BoosterTest is Test {
 
         vm.prank(operator);
         booster.cancelFight(EVENT_1, FIGHT_2);
+
+        // Mark event as claim ready
+        _setEventClaimReady(EVENT_1);
 
         // Claim refunds from both fights
         Booster.ClaimInput[] memory claims = new Booster.ClaimInput[](2);
@@ -1805,6 +1861,9 @@ contract BoosterTest is Test {
         booster.setEventClaimDeadline(EVENT_1, block.timestamp + 10);
         vm.warp(block.timestamp + 11);
 
+        // Mark event as claim ready
+        _setEventClaimReady(EVENT_1);
+
         Booster.ClaimInput[] memory claims = new Booster.ClaimInput[](1);
         uint256[] memory indices = booster.getUserBoostIndices(EVENT_1, FIGHT_1, user1);
         claims[0] = Booster.ClaimInput({fightId: FIGHT_1, boostIndices: indices});
@@ -1822,6 +1881,9 @@ contract BoosterTest is Test {
         vm.prank(user1);
         booster.placeBoosts(EVENT_1, boosts);
 
+        // Mark event as claim ready (even though fight is not resolved)
+        _setEventClaimReady(EVENT_1);
+
         Booster.ClaimInput[] memory claims = new Booster.ClaimInput[](1);
         uint256[] memory indices = booster.getUserBoostIndices(EVENT_1, FIGHT_1, user1);
         claims[0] = Booster.ClaimInput({fightId: FIGHT_1, boostIndices: indices});
@@ -1836,6 +1898,9 @@ contract BoosterTest is Test {
 
         vm.prank(operator);
         booster.submitFightResult(EVENT_1, FIGHT_1, Booster.Corner.RED, Booster.WinMethod.KNOCKOUT, 10, 20, 10, 2);
+
+        // Mark event as claim ready
+        _setEventClaimReady(EVENT_1);
 
         Booster.ClaimInput[] memory claims = new Booster.ClaimInput[](1);
         uint256[] memory indices = new uint256[](1);
@@ -1852,6 +1917,9 @@ contract BoosterTest is Test {
 
         vm.prank(operator);
         booster.submitFightResult(EVENT_1, FIGHT_1, Booster.Corner.RED, Booster.WinMethod.KNOCKOUT, 10, 20, 10, 2);
+
+        // Mark event as claim ready
+        _setEventClaimReady(EVENT_1);
 
         Booster.ClaimInput[] memory claims = new Booster.ClaimInput[](1);
         uint256[] memory indices = new uint256[](0);
@@ -1872,6 +1940,9 @@ contract BoosterTest is Test {
 
         vm.prank(operator);
         booster.submitFightResult(EVENT_1, FIGHT_1, Booster.Corner.RED, Booster.WinMethod.KNOCKOUT, 10, 20, 10, 2);
+
+        // Mark event as claim ready
+        _setEventClaimReady(EVENT_1);
 
         Booster.ClaimInput[] memory claims = new Booster.ClaimInput[](1);
         uint256[] memory indices = booster.getUserBoostIndices(EVENT_1, FIGHT_1, user1);
@@ -1896,6 +1967,9 @@ contract BoosterTest is Test {
         booster.submitFightResult(
             EVENT_1, FIGHT_1, Booster.Corner.RED, Booster.WinMethod.KNOCKOUT, 10, 20, 100 ether, 2000 ether
         );
+
+        // Mark event as claim ready
+        _setEventClaimReady(EVENT_1);
 
         // Claim first time
         uint256[] memory indices = booster.getUserBoostIndices(EVENT_1, FIGHT_1, user1);
@@ -1923,6 +1997,9 @@ contract BoosterTest is Test {
         vm.prank(operator);
         booster.submitFightResult(EVENT_1, FIGHT_1, Booster.Corner.BLUE, Booster.WinMethod.KNOCKOUT, 10, 20, 10, 2);
 
+        // Mark event as claim ready
+        _setEventClaimReady(EVENT_1);
+
         Booster.ClaimInput[] memory claims = new Booster.ClaimInput[](1);
         uint256[] memory indices = booster.getUserBoostIndices(EVENT_1, FIGHT_1, user1);
         claims[0] = Booster.ClaimInput({fightId: FIGHT_1, boostIndices: indices});
@@ -1938,6 +2015,9 @@ contract BoosterTest is Test {
         // Resolve fight with no winners
         vm.prank(operator);
         booster.submitFightResult(EVENT_1, FIGHT_1, Booster.Corner.RED, Booster.WinMethod.KNOCKOUT, 10, 20, 0, 0);
+
+        // Mark event as claim ready
+        _setEventClaimReady(EVENT_1);
 
         Booster.ClaimInput[] memory claims = new Booster.ClaimInput[](1);
         uint256[] memory indices = new uint256[](1);
@@ -1966,5 +2046,118 @@ contract BoosterTest is Test {
 
         // Check totalPool
         assertEq(booster.totalPool(EVENT_1, FIGHT_1), 600 ether);
+    }
+
+    // ============ Event Claim Ready Tests ============
+
+    function test_setEventClaimReady() public {
+        _createDefaultEvent();
+
+        // Verify event is not claim ready initially
+        (,,, bool claimReady) = booster.getEvent(EVENT_1);
+        assertFalse(claimReady);
+
+        // Mark event as claim ready
+        vm.prank(operator);
+        vm.expectEmit(true, false, false, false);
+        emit Booster.EventClaimReady(EVENT_1);
+        booster.setEventClaimReady(EVENT_1);
+
+        // Verify event is now claim ready
+        (,,, claimReady) = booster.getEvent(EVENT_1);
+        assertTrue(claimReady);
+        assertTrue(booster.isEventClaimReady(EVENT_1));
+    }
+
+    function testRevert_setEventClaimReady_notOperator() public {
+        _createDefaultEvent();
+
+        vm.prank(user1);
+        vm.expectRevert();
+        booster.setEventClaimReady(EVENT_1);
+    }
+
+    function testRevert_setEventClaimReady_alreadyClaimReady() public {
+        _createDefaultEvent();
+
+        vm.prank(operator);
+        booster.setEventClaimReady(EVENT_1);
+
+        vm.prank(operator);
+        vm.expectRevert("already claim ready");
+        booster.setEventClaimReady(EVENT_1);
+    }
+
+    function testRevert_claimReward_notClaimReady() public {
+        _createDefaultEvent();
+        _placeBoostsAndResolve();
+
+        // Try to claim without marking event as claim ready
+        uint256[] memory indices = booster.getUserBoostIndices(EVENT_1, FIGHT_1, user1);
+        vm.prank(user1);
+        vm.expectRevert("event not claim ready");
+        booster.claimReward(EVENT_1, FIGHT_1, indices);
+    }
+
+    function testRevert_claimRewards_notClaimReady() public {
+        _createDefaultEvent();
+        _placeBoostsAndResolve();
+
+        // Try to claim without marking event as claim ready
+        Booster.ClaimInput[] memory claims = new Booster.ClaimInput[](1);
+        uint256[] memory indices = booster.getUserBoostIndices(EVENT_1, FIGHT_1, user1);
+        claims[0] = Booster.ClaimInput({fightId: FIGHT_1, boostIndices: indices});
+
+        vm.prank(user1);
+        vm.expectRevert("event not claim ready");
+        booster.claimRewards(EVENT_1, claims);
+    }
+
+    function test_submitFightResult_canUpdateBeforeClaimReady() public {
+        _createDefaultEvent();
+        _placeMultipleBoosts();
+
+        // Submit result first time
+        vm.prank(operator);
+        booster.submitFightResult(
+            EVENT_1, FIGHT_1, Booster.Corner.RED, Booster.WinMethod.KNOCKOUT, 10, 20, 100 ether, 2000 ether
+        );
+
+        // Verify fight is resolved
+        (Booster.FightStatus status,,,,,,,,,,,) = booster.getFight(EVENT_1, FIGHT_1);
+        assertEq(uint256(status), uint256(Booster.FightStatus.RESOLVED));
+
+        // Can update result before event is claim ready
+        vm.prank(operator);
+        booster.submitFightResult(
+            EVENT_1, FIGHT_1, Booster.Corner.RED, Booster.WinMethod.SUBMISSION, 10, 20, 100 ether, 2000 ether
+        );
+
+        // Verify result was updated
+        (, Booster.Corner winner, Booster.WinMethod method,,,,,,,,,) = booster.getFight(EVENT_1, FIGHT_1);
+        assertEq(uint256(winner), uint256(Booster.Corner.RED));
+        assertEq(uint256(method), uint256(Booster.WinMethod.SUBMISSION));
+    }
+
+    function testRevert_submitFightResult_cannotUpdateAfterClaimReady() public {
+        _createDefaultEvent();
+        _placeMultipleBoosts();
+
+        // Submit result
+        vm.prank(operator);
+        booster.submitFightResult(
+            EVENT_1, FIGHT_1, Booster.Corner.RED, Booster.WinMethod.KNOCKOUT, 10, 20, 100 ether, 2000 ether
+        );
+
+        // Mark event as claim ready
+        vm.prank(operator);
+        booster.setEventClaimReady(EVENT_1);
+
+        // Cannot update result after event is claim ready
+        vm.prank(operator);
+        vm.expectRevert("event claim ready");
+        booster.submitFightResult(
+            EVENT_1, FIGHT_1, Booster.Corner.RED, Booster.WinMethod.SUBMISSION, 10, 20, 100 ether, 2000 ether
+        );
     }
 }

@@ -66,6 +66,7 @@ contract Booster is
         uint256 numFights; // Number of fights in the event (fights are 1, 2, 3, ..., numFights)
         bool exists;
         uint256 claimDeadline; // unix timestamp after which claims are rejected (0 = no limit)
+        bool claimReady; // Final approval state - once true, results cannot be updated and claims are enabled
     }
 
     struct Boost {
@@ -112,6 +113,7 @@ contract Booster is
     // ============ Events ============
     event EventCreated(string indexed eventId, uint256 numFights, uint256 indexed seasonId);
     event EventClaimDeadlineUpdated(string indexed eventId, uint256 deadline);
+    event EventClaimReady(string indexed eventId);
     event FightStatusUpdated(string indexed eventId, uint256 indexed fightId, FightStatus status);
     event FightBoostCutoffUpdated(string indexed eventId, uint256 indexed fightId, uint256 cutoff);
     event FightCancelled(string indexed eventId, uint256 indexed fightId);
@@ -233,7 +235,8 @@ contract Booster is
         require(FP.seasonStatus(seasonId) == FP1155.SeasonStatus.OPEN, "season not open");
 
         // Create event
-        events[eventId] = Event({seasonId: seasonId, numFights: numFights, exists: true, claimDeadline: 0});
+        events[eventId] =
+            Event({seasonId: seasonId, numFights: numFights, exists: true, claimDeadline: 0, claimReady: false});
 
         // Initialize all fights as OPEN (fightIds are 1, 2, 3, ..., numFights)
         for (uint256 i = 1; i <= numFights; i++) {
@@ -342,6 +345,19 @@ contract Booster is
     }
 
     /**
+     * @notice Mark an event as claim ready - final approval state
+     * @dev Once claimReady is true, fight results cannot be updated and claims are enabled
+     *      This is a one-way operation (cannot be reversed)
+     * @param eventId Event identifier
+     */
+    function setEventClaimReady(string calldata eventId) external onlyRole(OPERATOR_ROLE) {
+        require(events[eventId].exists, "event not exists");
+        require(!events[eventId].claimReady, "already claim ready");
+        events[eventId].claimReady = true;
+        emit EventClaimReady(eventId);
+    }
+
+    /**
      * @notice Purge unclaimed funds for all resolved fights in an event after deadline
      * @param eventId Event identifier
      * @param recipient Address to receive swept unclaimed FP
@@ -417,6 +433,7 @@ contract Booster is
      * @param pointsForWinnerMethod Points awarded for correct winner AND method
      * @param sumWinnersStakes Sum of all winning users' stakes
      * @param winningPoolTotalShares Total shares (sum of points * stakes for all winners)
+     * @dev Can be called multiple times to update results until the event is marked as claimReady
      */
     function submitFightResult(
         string calldata eventId,
@@ -429,6 +446,8 @@ contract Booster is
         uint256 winningPoolTotalShares
     ) external onlyRole(OPERATOR_ROLE) {
         require(events[eventId].exists, "event not exists");
+        // Cannot update results once event is claim ready
+        require(!events[eventId].claimReady, "event claim ready");
 
         // Validate points parameters
         require(pointsForWinner > 0, "points for winner must be > 0");
@@ -440,7 +459,6 @@ contract Booster is
         }
 
         Fight storage fight = fights[eventId][fightId];
-        require(fight.status != FightStatus.RESOLVED, "already resolved");
         require(!fight.cancelled, "fight cancelled");
 
         // Store result
@@ -595,6 +613,8 @@ contract Booster is
 
         Event storage evt = events[eventId];
         require(fightId >= 1 && fightId <= evt.numFights, "fightId not in event");
+        // Require event to be claim ready before allowing claims
+        require(evt.claimReady, "event not claim ready");
 
         uint256 deadline = evt.claimDeadline;
         require(deadline == 0 || block.timestamp <= deadline, "claim deadline passed");
@@ -643,6 +663,8 @@ contract Booster is
         require(inputs.length > 0, "no claims");
 
         Event storage evt = events[eventId];
+        // Require event to be claim ready before allowing claims
+        require(evt.claimReady, "event not claim ready");
         uint256 deadline = evt.claimDeadline;
         require(deadline == 0 || block.timestamp <= deadline, "claim deadline passed");
 
@@ -697,14 +719,15 @@ contract Booster is
      * @return seasonId The FP season for this event
      * @return numFights Number of fights in the event (fights are 1, 2, 3, ..., numFights)
      * @return exists Whether the event exists
+     * @return claimReady Whether the event is in claim ready state (final approval)
      */
     function getEvent(string calldata eventId)
         external
         view
-        returns (uint256 seasonId, uint256 numFights, bool exists)
+        returns (uint256 seasonId, uint256 numFights, bool exists, bool claimReady)
     {
         Event storage evt = events[eventId];
-        return (evt.seasonId, evt.numFights, evt.exists);
+        return (evt.seasonId, evt.numFights, evt.exists, evt.claimReady);
     }
 
     /**
@@ -712,6 +735,15 @@ contract Booster is
      */
     function getEventClaimDeadline(string calldata eventId) external view returns (uint256) {
         return events[eventId].claimDeadline;
+    }
+
+    /**
+     * @notice Check if an event is claim ready
+     * @param eventId Event identifier
+     * @return Whether the event is in claim ready state
+     */
+    function isEventClaimReady(string calldata eventId) external view returns (bool) {
+        return events[eventId].claimReady;
     }
 
     /**
