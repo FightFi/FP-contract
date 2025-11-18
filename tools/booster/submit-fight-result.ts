@@ -1,9 +1,30 @@
 /**
  * @notice Script to submit fight result with calculated points and shares
  *
+ * @example Using testnet
+ * ts-node tools/booster/submit-fight-result.ts --network testnet \
+ *   --eventId UFC_300 \
+ *   --fightId 1 \
+ *   --winner RED \
+ *   --method KNOCKOUT \
+ *   --pointsForWinner 10 \
+ *   --pointsForWinnerMethod 20 \
+ *   --sumWinnersStakes 10000000000000000000 \
+ *   --winningPoolTotalShares 200000000000000000000
+ *
+ * @example Using mainnet
+ * ts-node tools/booster/submit-fight-result.ts --network mainnet \
+ *   --eventId UFC_300 \
+ *   --fightId 1 \
+ *   --winner RED \
+ *   --method KNOCKOUT \
+ *   --pointsForWinner 10 \
+ *   --pointsForWinnerMethod 20 \
+ *   --sumWinnersStakes 10000000000000000000 \
+ *   --winningPoolTotalShares 200000000000000000000
+ *
  * @example Submit result: RED corner wins by KNOCKOUT
- * ts-node tools/booster/submit-fight-result.ts \
- *   --network testnet \
+ * ts-node tools/booster/submit-fight-result.ts --network testnet \
  *   --eventId UFC_300 \
  *   --fightId 1 \
  *   --winner RED \
@@ -14,8 +35,7 @@
  *   --winningPoolTotalShares 200000000000000000000
  *
  * @example Submit result: BLUE corner wins by DECISION
- * ts-node tools/booster/submit-fight-result.ts \
- *   --network testnet \
+ * ts-node tools/booster/submit-fight-result.ts --network testnet \
  *   --eventId UFC_300 \
  *   --fightId 2 \
  *   --winner BLUE \
@@ -26,8 +46,7 @@
  *   --winningPoolTotalShares 75000000000000000000
  *
  * @example Using numeric values for winner and method
- * ts-node tools/booster/submit-fight-result.ts \
- *   --network testnet \
+ * ts-node tools/booster/submit-fight-result.ts --network testnet \
  *   --eventId UFC_300 \
  *   --fightId 1 \
  *   --winner 0 \
@@ -38,23 +57,34 @@
  *   --winningPoolTotalShares 200000000000000000000
  *
  * @example Using alternative parameter names
-  ts-node tools/booster/submit-fight-result.ts \
-    --network testnet \
-    --event 322 \
-    --fight 1 \
-    --winner blue \
-    --method Decision \
-    --pointsWinner 3 \
-    --pointsMethod 4 \
-    --sumStakes 4511 \
-    --totalShares 14743
- 
+ * ts-node tools/booster/submit-fight-result.ts --network testnet \
+ *   --event UFC_300 \
+ *   --fight 1 \
+ *   --winner RED \
+ *   --method KO \
+ *   --pointsWinner 10 \
+ *   --pointsMethod 20 \
+ *   --sumStakes 10000000000000000000 \
+ *   --totalShares 200000000000000000000
+ *
+ * @example Skip confirmation prompt
+ * ts-node tools/booster/submit-fight-result.ts --network testnet --eventId UFC_300 --fightId 1 --winner RED --method KNOCKOUT --pointsForWinner 10 --pointsForWinnerMethod 20 --sumWinnersStakes 10000000000000000000 --winningPoolTotalShares 200000000000000000000 --yes
+ *
  * Winner values: RED (0), BLUE (1), NONE (2)
  * Method values: KNOCKOUT/KO (0), SUBMISSION/SUB (1), DECISION/DEC (2), NO_CONTEST (3)
+ *
+ * @env MAINNET_BSC_EXPLORER_URL - Block explorer URL for BSC Mainnet (default: https://bscscan.com)
+ * @env TESTNET_BSC_EXPLORER_URL - Block explorer URL for BSC Testnet (default: https://testnet.bscscan.com)
  */
 import "dotenv/config";
 import { ethers } from "ethers";
-import * as readline from "readline";
+import {
+  parseArgs,
+  setupBoosterConfig,
+  displayTransactionSummary,
+  requestConfirmation,
+  waitForTransaction,
+} from "./booster.utils";
 
 // Corner enum: RED=0, BLUE=1, NONE=2
 // WinMethod enum: KNOCKOUT=0, SUBMISSION=1, DECISION=2, NO_CONTEST=3
@@ -62,80 +92,12 @@ const ABI = [
   "function submitFightResult(string calldata eventId, uint256 fightId, uint8 winner, uint8 method, uint256 pointsForWinner, uint256 pointsForWinnerMethod, uint256 sumWinnersStakes, uint256 winningPoolTotalShares) external",
 ];
 
-// Network name to environment variable mapping
-const NETWORK_ENV_MAP: Record<string, string> = {
-  testnet: "BSC_TESTNET_RPC_URL",
-  mainnet: "BSC_RPC_URL",
-};
-
-function getRpcUrl(args: Record<string, string>): string {
-  const networkName = args.network || args.net;
-  if (!networkName) {
-    throw new Error("Missing --network (required: testnet or mainnet)");
-  }
-
-  const envVar = NETWORK_ENV_MAP[networkName.toLowerCase()];
-  if (!envVar) {
-    throw new Error(
-      `Unknown network "${networkName}". Supported: ${Object.keys(
-        NETWORK_ENV_MAP
-      ).join(", ")}`
-    );
-  }
-
-  const url = process.env[envVar];
-  if (!url) {
-    throw new Error(
-      `Network "${networkName}" requires ${envVar} to be set in .env`
-    );
-  }
-
-  return url;
-}
-
-// Helper function to format method name
-function getMethodName(method: number): string {
-  const methods = ["KNOCKOUT", "SUBMISSION", "DECISION", "NO_CONTEST"];
-  return methods[method] || `UNKNOWN (${method})`;
-}
-
-// Helper function to format winner name
-function getWinnerName(winner: number): string {
-  const winners = ["RED", "BLUE", "NONE"];
-  return winners[winner] || `UNKNOWN (${winner})`;
-}
-
-// Function to ask for user confirmation
-function askConfirmation(question: string): Promise<boolean> {
-  const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout,
-  });
-
-  return new Promise((resolve) => {
-    rl.question(question, (answer) => {
-      rl.close();
-      const normalized = answer.trim().toLowerCase();
-      resolve(normalized === "y" || normalized === "yes");
-    });
-  });
-}
-
 async function main() {
   const args = parseArgs(process.argv.slice(2));
-  const rpcUrl = getRpcUrl(args);
-  const provider = new ethers.JsonRpcProvider(rpcUrl);
+  const config = await setupBoosterConfig(args);
 
-  const pk = process.env.OPERATOR_PK || process.env.PRIVATE_KEY;
-  if (!pk) throw new Error("Missing OPERATOR_PK (or PRIVATE_KEY) in .env");
-  const wallet = new ethers.Wallet(
-    pk.startsWith("0x") ? pk : "0x" + pk,
-    provider
-  );
-
-  const contract = args.contract || process.env.BOOSTER_ADDRESS;
-  if (!contract)
-    throw new Error("Missing contract (set --contract or BOOSTER_ADDRESS)");
+  // Log network mode for clarity
+  console.log(`Network mode: ${config.networkMode.toUpperCase()}`);
 
   const eventId = args.eventId || args.event;
   if (!eventId) throw new Error("Missing --eventId (or --event)");
@@ -195,38 +157,24 @@ async function main() {
   if (winningPoolTotalShares <= 0n)
     throw new Error("--winningPoolTotalShares (or --totalShares) must be > 0");
 
-  const booster = new ethers.Contract(contract, ABI, wallet);
+  const booster = new ethers.Contract(config.contractAddress, ABI, config.wallet);
 
-  // Display comprehensive review of all parameters
-  console.log("\n" + "=".repeat(60));
-  console.log("PARAMETER REVIEW - SUBMIT FIGHT RESULT");
-  console.log("=".repeat(60));
-  console.log(`Network:           ${args.network || args.net}`);
-  console.log(`Contract Address:  ${contract}`);
-  console.log(`Wallet Address:    ${wallet.address}`);
-  console.log(`Event ID:          ${eventId}`);
-  console.log(`Fight ID:          ${fightId}`);
-  console.log(`Winner:            ${getWinnerName(winner)} (${winner})`);
-  console.log(`Method:            ${getMethodName(method)} (${method})`);
-  console.log(`Points (Winner):   ${pointsForWinner}`);
-  console.log(`Points (Winner+Method): ${pointsForWinnerMethod}`);
-  console.log(`Sum Winners Stakes: ${sumWinnersStakes}`);
-  console.log(`Winning Pool Shares: ${winningPoolTotalShares}`);
-  console.log("=".repeat(60));
-  console.log("");
+  // Display transaction summary
+  displayTransactionSummary(config, [
+    `Event: ${eventId}`,
+    `FightId: ${fightId}`,
+    `Winner: ${winner} (${winnerStr})`,
+    `Method: ${method} (${methodStr})`,
+    `Points for winner: ${pointsForWinner}`,
+    `Points for winner+method: ${pointsForWinnerMethod}`,
+    `Sum winners stakes: ${sumWinnersStakes}`,
+    `Winning pool total shares: ${winningPoolTotalShares}`,
+  ]);
 
-  // Ask for confirmation before proceeding
-  const confirmed = await askConfirmation(
-    "Do you want to submit this transaction? (y/n): "
-  );
+  // Request confirmation
+  await requestConfirmation(args);
 
-  if (!confirmed) {
-    console.log("\n❌ Transaction cancelled by user.");
-    process.exit(0);
-  }
-
-  console.log("\n⏳ Sending transaction...\n");
-
+  console.log("\n🚀 Executing transaction...");
   const tx = await booster.submitFightResult(
     eventId,
     fightId,
@@ -237,24 +185,7 @@ async function main() {
     sumWinnersStakes,
     winningPoolTotalShares
   );
-  console.log("✅ Transaction sent:", tx.hash);
-  console.log("⏳ Waiting for confirmation...");
-  const rcpt = await tx.wait();
-  console.log("✅ Transaction confirmed in block:", rcpt.blockNumber);
-}
-
-function parseArgs(argv: string[]) {
-  const out: Record<string, string> = {};
-  for (let i = 0; i < argv.length; i++) {
-    const a = argv[i];
-    if (a.startsWith("--")) {
-      const key = a.slice(2);
-      const val = argv[i + 1];
-      out[key] = val;
-      i++;
-    }
-  }
-  return out;
+  await waitForTransaction(tx, config.chainId);
 }
 
 main().catch((err) => {
