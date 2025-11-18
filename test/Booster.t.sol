@@ -28,11 +28,8 @@ contract BoosterTest is Test {
 
         // Deploy FP1155 via ERC1967Proxy and initialize
         FP1155 implementation = new FP1155();
-        bytes memory initData = abi.encodeWithSelector(
-            FP1155.initialize.selector,
-            "https://api.fightfoundation.io/fp/",
-            admin
-        );
+        bytes memory initData =
+            abi.encodeWithSelector(FP1155.initialize.selector, "https://api.fightfoundation.io/fp/", admin);
         ERC1967Proxy proxy = new ERC1967Proxy(address(implementation), initData);
         fp = FP1155(address(proxy));
 
@@ -1144,6 +1141,263 @@ contract BoosterTest is Test {
         vm.prank(user1);
         vm.expectRevert("below min boost");
         booster.addToBoost(EVENT_1, FIGHT_1, 0, 10 ether);
+    }
+
+    // ============ Max Boost Amount Tests ============
+
+    function test_setMaxBoostAmount() public {
+        vm.prank(operator);
+        vm.expectEmit(false, false, false, true);
+        emit Booster.MaxBoostAmountUpdated(0, 1000 ether);
+        booster.setMaxBoostAmount(1000 ether);
+
+        assertEq(booster.maxBoostAmount(), 1000 ether);
+    }
+
+    function test_setMaxBoostAmount_zeroDisables() public {
+        _createDefaultEvent();
+
+        // Set a maximum
+        vm.prank(operator);
+        booster.setMaxBoostAmount(1000 ether);
+        assertEq(booster.maxBoostAmount(), 1000 ether);
+
+        // Set to 0 to disable
+        vm.prank(operator);
+        vm.expectEmit(false, false, false, true);
+        emit Booster.MaxBoostAmountUpdated(1000 ether, 0);
+        booster.setMaxBoostAmount(0);
+        assertEq(booster.maxBoostAmount(), 0);
+
+        // Now should be able to place boost above previous maximum
+        Booster.BoostInput[] memory boosts = new Booster.BoostInput[](1);
+        boosts[0] = Booster.BoostInput(FIGHT_1, 2000 ether, Booster.Corner.RED, Booster.WinMethod.KNOCKOUT);
+        vm.prank(user1);
+        booster.placeBoosts(EVENT_1, boosts);
+
+        // Verify boost was placed
+        Booster.Boost[] memory userBoosts = booster.getUserBoosts(EVENT_1, FIGHT_1, user1);
+        assertEq(userBoosts[0].amount, 2000 ether);
+    }
+
+    function testRevert_placeBoost_aboveMaximum() public {
+        _createDefaultEvent();
+
+        vm.prank(operator);
+        booster.setMaxBoostAmount(500 ether);
+
+        Booster.BoostInput[] memory boosts = new Booster.BoostInput[](1);
+        boosts[0] = Booster.BoostInput(FIGHT_1, 600 ether, Booster.Corner.RED, Booster.WinMethod.KNOCKOUT);
+
+        vm.prank(user1);
+        vm.expectRevert("above max boost");
+        booster.placeBoosts(EVENT_1, boosts);
+    }
+
+    function test_placeBoost_atMaximum() public {
+        _createDefaultEvent();
+
+        vm.prank(operator);
+        booster.setMaxBoostAmount(500 ether);
+
+        // Should allow boost exactly at maximum
+        Booster.BoostInput[] memory boosts = new Booster.BoostInput[](1);
+        boosts[0] = Booster.BoostInput(FIGHT_1, 500 ether, Booster.Corner.RED, Booster.WinMethod.KNOCKOUT);
+
+        vm.prank(user1);
+        booster.placeBoosts(EVENT_1, boosts);
+
+        // Verify boost was placed
+        Booster.Boost[] memory userBoosts = booster.getUserBoosts(EVENT_1, FIGHT_1, user1);
+        assertEq(userBoosts[0].amount, 500 ether);
+    }
+
+    function test_placeBoost_belowMaximum() public {
+        _createDefaultEvent();
+
+        vm.prank(operator);
+        booster.setMaxBoostAmount(500 ether);
+
+        // Should allow boost below maximum
+        Booster.BoostInput[] memory boosts = new Booster.BoostInput[](1);
+        boosts[0] = Booster.BoostInput(FIGHT_1, 300 ether, Booster.Corner.RED, Booster.WinMethod.KNOCKOUT);
+
+        vm.prank(user1);
+        booster.placeBoosts(EVENT_1, boosts);
+
+        // Verify boost was placed
+        Booster.Boost[] memory userBoosts = booster.getUserBoosts(EVENT_1, FIGHT_1, user1);
+        assertEq(userBoosts[0].amount, 300 ether);
+    }
+
+    function testRevert_addToBoost_aboveMaximum() public {
+        _createDefaultEvent();
+
+        // Place initial boost
+        Booster.BoostInput[] memory boosts = new Booster.BoostInput[](1);
+        boosts[0] = Booster.BoostInput(FIGHT_1, 300 ether, Booster.Corner.RED, Booster.WinMethod.KNOCKOUT);
+        vm.prank(user1);
+        booster.placeBoosts(EVENT_1, boosts);
+
+        // Set maximum
+        vm.prank(operator);
+        booster.setMaxBoostAmount(500 ether);
+
+        // Try to add amount that would exceed maximum (300 + 250 = 550 > 500)
+        vm.prank(user1);
+        vm.expectRevert("above max boost");
+        booster.addToBoost(EVENT_1, FIGHT_1, 0, 250 ether);
+    }
+
+    function test_addToBoost_atMaximum() public {
+        _createDefaultEvent();
+
+        // Place initial boost
+        Booster.BoostInput[] memory boosts = new Booster.BoostInput[](1);
+        boosts[0] = Booster.BoostInput(FIGHT_1, 300 ether, Booster.Corner.RED, Booster.WinMethod.KNOCKOUT);
+        vm.prank(user1);
+        booster.placeBoosts(EVENT_1, boosts);
+
+        // Set maximum
+        vm.prank(operator);
+        booster.setMaxBoostAmount(500 ether);
+
+        // Should allow adding exactly to maximum (300 + 200 = 500)
+        vm.prank(user1);
+        booster.addToBoost(EVENT_1, FIGHT_1, 0, 200 ether);
+
+        // Verify boost amount updated
+        Booster.Boost[] memory userBoosts = booster.getUserBoosts(EVENT_1, FIGHT_1, user1);
+        assertEq(userBoosts[0].amount, 500 ether);
+    }
+
+    function test_addToBoost_belowMaximum() public {
+        _createDefaultEvent();
+
+        // Place initial boost
+        Booster.BoostInput[] memory boosts = new Booster.BoostInput[](1);
+        boosts[0] = Booster.BoostInput(FIGHT_1, 300 ether, Booster.Corner.RED, Booster.WinMethod.KNOCKOUT);
+        vm.prank(user1);
+        booster.placeBoosts(EVENT_1, boosts);
+
+        // Set maximum
+        vm.prank(operator);
+        booster.setMaxBoostAmount(500 ether);
+
+        // Should allow adding below maximum (300 + 100 = 400 < 500)
+        vm.prank(user1);
+        booster.addToBoost(EVENT_1, FIGHT_1, 0, 100 ether);
+
+        // Verify boost amount updated
+        Booster.Boost[] memory userBoosts = booster.getUserBoosts(EVENT_1, FIGHT_1, user1);
+        assertEq(userBoosts[0].amount, 400 ether);
+    }
+
+    function test_placeBoost_multipleBoosts_withMax() public {
+        _createDefaultEvent();
+
+        vm.prank(operator);
+        booster.setMaxBoostAmount(500 ether);
+
+        // Place multiple boosts, all within maximum
+        Booster.BoostInput[] memory boosts = new Booster.BoostInput[](3);
+        boosts[0] = Booster.BoostInput(FIGHT_1, 200 ether, Booster.Corner.RED, Booster.WinMethod.KNOCKOUT);
+        boosts[1] = Booster.BoostInput(FIGHT_2, 300 ether, Booster.Corner.BLUE, Booster.WinMethod.SUBMISSION);
+        boosts[2] = Booster.BoostInput(FIGHT_3, 400 ether, Booster.Corner.RED, Booster.WinMethod.DECISION);
+
+        vm.prank(user1);
+        booster.placeBoosts(EVENT_1, boosts);
+
+        // Verify all boosts were placed
+        Booster.Boost[] memory userBoosts1 = booster.getUserBoosts(EVENT_1, FIGHT_1, user1);
+        Booster.Boost[] memory userBoosts2 = booster.getUserBoosts(EVENT_1, FIGHT_2, user1);
+        Booster.Boost[] memory userBoosts3 = booster.getUserBoosts(EVENT_1, FIGHT_3, user1);
+
+        assertEq(userBoosts1[0].amount, 200 ether);
+        assertEq(userBoosts2[0].amount, 300 ether);
+        assertEq(userBoosts3[0].amount, 400 ether);
+    }
+
+    function testRevert_placeBoost_multipleBoosts_oneAboveMax() public {
+        _createDefaultEvent();
+
+        vm.prank(operator);
+        booster.setMaxBoostAmount(500 ether);
+
+        // Try to place multiple boosts, one above maximum
+        Booster.BoostInput[] memory boosts = new Booster.BoostInput[](2);
+        boosts[0] = Booster.BoostInput(FIGHT_1, 300 ether, Booster.Corner.RED, Booster.WinMethod.KNOCKOUT);
+        boosts[1] = Booster.BoostInput(FIGHT_2, 600 ether, Booster.Corner.BLUE, Booster.WinMethod.SUBMISSION); // Above max
+
+        vm.prank(user1);
+        vm.expectRevert("above max boost");
+        booster.placeBoosts(EVENT_1, boosts);
+    }
+
+    function testRevert_setMaxBoostAmount_notOperator() public {
+        vm.prank(user1);
+        vm.expectRevert();
+        booster.setMaxBoostAmount(1000 ether);
+    }
+
+    function test_maxBoostAmount_defaultIsZero() public view {
+        // Verify default is 0 (no maximum)
+        assertEq(booster.maxBoostAmount(), 0);
+    }
+
+    function test_maxBoostAmount_withMinAndMax() public {
+        _createDefaultEvent();
+
+        // Set both min and max
+        vm.prank(operator);
+        booster.setMinBoostAmount(100 ether);
+        vm.prank(operator);
+        booster.setMaxBoostAmount(500 ether);
+
+        // Should allow boost within range
+        Booster.BoostInput[] memory boosts = new Booster.BoostInput[](1);
+        boosts[0] = Booster.BoostInput(FIGHT_1, 300 ether, Booster.Corner.RED, Booster.WinMethod.KNOCKOUT);
+        vm.prank(user1);
+        booster.placeBoosts(EVENT_1, boosts);
+
+        // Verify boost was placed
+        Booster.Boost[] memory userBoosts = booster.getUserBoosts(EVENT_1, FIGHT_1, user1);
+        assertEq(userBoosts[0].amount, 300 ether);
+    }
+
+    function testRevert_maxBoostAmount_belowMin() public {
+        _createDefaultEvent();
+
+        // Set min higher than max (edge case)
+        vm.prank(operator);
+        booster.setMinBoostAmount(500 ether);
+        vm.prank(operator);
+        booster.setMaxBoostAmount(300 ether);
+
+        // Try to place boost below min - should fail with "below min boost"
+        Booster.BoostInput[] memory boosts1 = new Booster.BoostInput[](1);
+        boosts1[0] = Booster.BoostInput(FIGHT_1, 400 ether, Booster.Corner.RED, Booster.WinMethod.KNOCKOUT);
+
+        vm.prank(user1);
+        vm.expectRevert("below min boost");
+        booster.placeBoosts(EVENT_1, boosts1);
+
+        // Try to place boost above max - should fail with "above max boost"
+        Booster.BoostInput[] memory boosts2 = new Booster.BoostInput[](1);
+        boosts2[0] = Booster.BoostInput(FIGHT_1, 600 ether, Booster.Corner.RED, Booster.WinMethod.KNOCKOUT);
+
+        vm.prank(user1);
+        vm.expectRevert("above max boost");
+        booster.placeBoosts(EVENT_1, boosts2);
+
+        // Try to place boost between min and max - should fail with "above max boost" (max is checked after min)
+        // Actually, if min > max, no valid amount exists
+        Booster.BoostInput[] memory boosts3 = new Booster.BoostInput[](1);
+        boosts3[0] = Booster.BoostInput(FIGHT_1, 550 ether, Booster.Corner.RED, Booster.WinMethod.KNOCKOUT);
+
+        vm.prank(user1);
+        vm.expectRevert("above max boost");
+        booster.placeBoosts(EVENT_1, boosts3);
     }
 
     // ============ Points Validation Tests ============
