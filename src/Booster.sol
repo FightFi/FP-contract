@@ -95,9 +95,6 @@ contract Booster is
     // Minimum boost amount per boost (can be 0 to disable)
     uint256 public minBoostAmount;
 
-    // Maximum boost amount per boost (can be 0 to disable)
-    uint256 public maxBoostAmount;
-
     // eventId => Event
     mapping(string => Event) private events;
 
@@ -118,7 +115,6 @@ contract Booster is
     event FightBoostCutoffUpdated(string indexed eventId, uint256 indexed fightId, uint256 cutoff);
     event FightCancelled(string indexed eventId, uint256 indexed fightId);
     event MinBoostAmountUpdated(uint256 oldAmount, uint256 newAmount);
-    event MaxBoostAmountUpdated(uint256 oldAmount, uint256 newAmount);
     event BonusDeposited(string indexed eventId, uint256 indexed fightId, address indexed manager, uint256 amount);
     event BoostPlaced(
         string indexed eventId,
@@ -175,7 +171,6 @@ contract Booster is
 
         FP = FP1155(_fp);
         minBoostAmount = 0; // Default: no minimum
-        maxBoostAmount = 0; // Default: no maximum
         _grantRole(DEFAULT_ADMIN_ROLE, admin);
     }
 
@@ -192,16 +187,6 @@ contract Booster is
         uint256 oldMin = minBoostAmount;
         minBoostAmount = newMin;
         emit MinBoostAmountUpdated(oldMin, newMin);
-    }
-
-    /**
-     * @notice Set maximum boost amount (0 to disable)
-     * @param newMax New maximum boost amount in FP wei
-     */
-    function setMaxBoostAmount(uint256 newMax) external onlyRole(OPERATOR_ROLE) {
-        uint256 oldMax = maxBoostAmount;
-        maxBoostAmount = newMax;
-        emit MaxBoostAmountUpdated(oldMax, newMax);
     }
 
     /**
@@ -516,10 +501,6 @@ contract Booster is
             BoostInput calldata input = inputs[i];
             require(input.amount > 0, "amount=0");
             require(input.amount >= minBoostAmount, "below min boost");
-            // Check maximum boost amount if set
-            if (maxBoostAmount > 0) {
-                require(input.amount <= maxBoostAmount, "above max boost");
-            }
 
             // Validate that fightId exists in the event (O(1) range check: fights are 1, 2, 3, ..., numFights)
             require(input.fightId >= 1 && input.fightId <= evt.numFights, "fightId not in event");
@@ -596,11 +577,6 @@ contract Booster is
 
         Boost storage boost = fightBoosts[boostIndex];
         require(boost.user == msg.sender, "not boost owner");
-
-        // Check maximum boost amount if set (check total after addition)
-        if (maxBoostAmount > 0) {
-            require(boost.amount + additionalAmount <= maxBoostAmount, "above max boost");
-        }
 
         uint256 seasonId = events[eventId].seasonId;
 
