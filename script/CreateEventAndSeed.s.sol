@@ -86,7 +86,7 @@ contract CreateEventAndSeed is Script {
 
         // Create event (fights are sequential: 1, 2, 3, ..., numFights)
         uint256 numFights = P.fights.length;
-        booster.createEvent(eventId, numFights, seasonId);
+        booster.createEvent(eventId, numFights, seasonId, 0);
         console2.log("Created event with", numFights, "fights");
 
         // Optional deadline

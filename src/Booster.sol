@@ -185,11 +185,14 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
      * @param eventId Unique identifier for the event (e.g., "UFC_300")
      * @param numFights Number of fights in the event (fights are 1, 2, 3, ..., numFights)
      * @param seasonId Which FP season this event uses
+     * @param defaultBoostCutoff Default boost cutoff timestamp for all fights (0 = no cutoff)
      */
-    function createEvent(string calldata eventId, uint256 numFights, uint256 seasonId)
-        external
-        onlyRole(OPERATOR_ROLE)
-    {
+    function createEvent(
+        string calldata eventId,
+        uint256 numFights,
+        uint256 seasonId,
+        uint256 defaultBoostCutoff
+    ) external onlyRole(OPERATOR_ROLE) {
         require(!events[eventId].exists, "event exists");
         require(numFights > 0, "no fights");
 
@@ -202,6 +205,9 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
         // Initialize all fights as OPEN (fightIds are 1, 2, 3, ..., numFights)
         for (uint256 i = 1; i <= numFights; i++) {
             fights[eventId][i].status = FightStatus.OPEN;
+            if (defaultBoostCutoff > 0) {
+                fights[eventId][i].boostCutoff = defaultBoostCutoff;
+            }
         }
 
         emit EventCreated(eventId, numFights, seasonId);

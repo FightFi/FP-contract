@@ -65,7 +65,7 @@ contract BoosterTest is Test {
         vm.prank(operator);
         vm.expectEmit(true, false, false, true);
         emit Booster.EventCreated(EVENT_1, numFights, SEASON_1);
-        booster.createEvent(EVENT_1, numFights, SEASON_1);
+        booster.createEvent(EVENT_1, numFights, SEASON_1, 0);
 
         // Verify event exists
         (uint256 seasonId, uint256 storedNumFights, bool exists) = booster.getEvent(EVENT_1);
@@ -87,22 +87,88 @@ contract BoosterTest is Test {
     function testRevert_createEvent_notOperator() public {
         vm.prank(user1);
         vm.expectRevert();
-        booster.createEvent(EVENT_1, 1, SEASON_1);
+        booster.createEvent(EVENT_1, 1, SEASON_1, 0);
     }
 
     function testRevert_createEvent_duplicate() public {
         vm.startPrank(operator);
-        booster.createEvent(EVENT_1, 1, SEASON_1);
+        booster.createEvent(EVENT_1, 1, SEASON_1, 0);
 
         vm.expectRevert("event exists");
-        booster.createEvent(EVENT_1, 1, SEASON_1);
+        booster.createEvent(EVENT_1, 1, SEASON_1, 0);
         vm.stopPrank();
     }
 
     function testRevert_createEvent_emptyFights() public {
         vm.prank(operator);
         vm.expectRevert("no fights");
-        booster.createEvent(EVENT_1, 0, SEASON_1);
+        booster.createEvent(EVENT_1, 0, SEASON_1, 0);
+    }
+
+    function test_createEvent_withDefaultBoostCutoff() public {
+        uint256 numFights = 3;
+        uint256 cutoff = block.timestamp + 1 days;
+
+        vm.prank(operator);
+        // No events emitted for initial cutoff setup (it's part of event creation, not a change)
+        booster.createEvent(EVENT_1, numFights, SEASON_1, cutoff);
+
+        // Verify all fights have the cutoff set
+        (,,,,,,,,,, uint256 boostCutoff1,) = booster.getFight(EVENT_1, FIGHT_1);
+        (,,,,,,,,,, uint256 boostCutoff2,) = booster.getFight(EVENT_1, FIGHT_2);
+        (,,,,,,,,,, uint256 boostCutoff3,) = booster.getFight(EVENT_1, FIGHT_3);
+
+        assertEq(boostCutoff1, cutoff);
+        assertEq(boostCutoff2, cutoff);
+        assertEq(boostCutoff3, cutoff);
+    }
+
+    function test_createEvent_withZeroCutoff() public {
+        uint256 numFights = 3;
+
+        vm.prank(operator);
+        booster.createEvent(EVENT_1, numFights, SEASON_1, 0);
+
+        // Verify all fights have no cutoff (0)
+        (,,,,,,,,,, uint256 boostCutoff1,) = booster.getFight(EVENT_1, FIGHT_1);
+        (,,,,,,,,,, uint256 boostCutoff2,) = booster.getFight(EVENT_1, FIGHT_2);
+        (,,,,,,,,,, uint256 boostCutoff3,) = booster.getFight(EVENT_1, FIGHT_3);
+
+        assertEq(boostCutoff1, 0);
+        assertEq(boostCutoff2, 0);
+        assertEq(boostCutoff3, 0);
+    }
+
+    function test_createEvent_withDefaultBoostCutoff_preventsBoostsAfterCutoff() public {
+        uint256 cutoff = block.timestamp + 10;
+        vm.prank(operator);
+        booster.createEvent(EVENT_1, 3, SEASON_1, cutoff);
+
+        // Advance past cutoff
+        vm.warp(block.timestamp + 11);
+
+        // Try to place boost - should fail
+        Booster.BoostInput[] memory boosts = new Booster.BoostInput[](1);
+        boosts[0] = Booster.BoostInput(FIGHT_1, 50 ether, Booster.Corner.RED, Booster.WinMethod.KNOCKOUT);
+        vm.prank(user1);
+        vm.expectRevert("boost cutoff passed");
+        booster.placeBoosts(EVENT_1, boosts);
+    }
+
+    function test_createEvent_withDefaultBoostCutoff_allowsBoostsBeforeCutoff() public {
+        uint256 cutoff = block.timestamp + 100;
+        vm.prank(operator);
+        booster.createEvent(EVENT_1, 3, SEASON_1, cutoff);
+
+        // Place boost before cutoff - should succeed
+        Booster.BoostInput[] memory boosts = new Booster.BoostInput[](1);
+        boosts[0] = Booster.BoostInput(FIGHT_1, 50 ether, Booster.Corner.RED, Booster.WinMethod.KNOCKOUT);
+        vm.prank(user1);
+        booster.placeBoosts(EVENT_1, boosts);
+
+        // Verify boost was placed
+        Booster.Boost[] memory userBoosts = booster.getUserBoosts(EVENT_1, FIGHT_1, user1);
+        assertEq(userBoosts[0].amount, 50 ether);
     }
 
     // ============ Boost Placement Tests ============
@@ -846,7 +912,7 @@ contract BoosterTest is Test {
     function test_setEventBoostCutoff_largeEvent() public {
         // Create event with many fights
         vm.prank(operator);
-        booster.createEvent("UFC_301", 10, SEASON_1);
+        booster.createEvent("UFC_301", 10, SEASON_1, 0);
 
         uint256 cutoff = block.timestamp + 100;
 
@@ -1029,7 +1095,7 @@ contract BoosterTest is Test {
 
     function _createDefaultEvent() internal {
         vm.prank(operator);
-        booster.createEvent(EVENT_1, 3, SEASON_1);
+        booster.createEvent(EVENT_1, 3, SEASON_1, 0);
     }
 
     function _placeMultipleBoosts() internal {

@@ -82,7 +82,7 @@ contract BoosterFPTest is Test {
         console2.log("\n=== TEST CASE: Single Fight Analysis ===");
 
         vm.prank(operator);
-        booster.createEvent(EVENT_1, 1, SEASON_1);
+        booster.createEvent(EVENT_1, 1, SEASON_1, 0);
 
         uint256 prizePool = 100;
 
@@ -312,7 +312,7 @@ contract BoosterFPTest is Test {
         // ============ STEP 1: Create Event with 5 fights ============
         uint256 numFights = 5;
         vm.prank(operator);
-        booster.createEvent(EVENT_1, numFights, SEASON_1);
+        booster.createEvent(EVENT_1, numFights, SEASON_1, 0);
 
         // Prize pool: 100 FP per fight = 500 FP total
         uint256 prizePoolPerFight = 100;
@@ -880,7 +880,7 @@ contract BoosterFPTest is Test {
 
         // Create event with 1 fight
         vm.prank(operator);
-        booster.createEvent(eventId, 1, SEASON_1);
+        booster.createEvent(eventId, 1, SEASON_1, 0);
 
         // Very small initial prize pool: 1 FP
         uint256 initialPrizePool = 1;
@@ -1109,7 +1109,7 @@ contract BoosterFPTest is Test {
 
         // Create event with 1 fight
         vm.prank(operator);
-        booster.createEvent(eventId, 1, SEASON_1);
+        booster.createEvent(eventId, 1, SEASON_1, 0);
 
         // Very small initial prize pool: 1 FP
         uint256 initialPrizePool = 1;
