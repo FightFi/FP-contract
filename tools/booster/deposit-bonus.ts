@@ -67,7 +67,7 @@ async function main() {
     `Event ID: ${eventId}`,
     `Fight ID: ${fightId}`,
     `Amount: ${amountInFP} FP (${amountBigInt} wei)`,
-  ]);
+  ], "depositBonus");
 
   // Request confirmation
   await requestConfirmation(args);

@@ -169,7 +169,7 @@ async function main() {
     `Points for winner+method: ${pointsForWinnerMethod}`,
     `Sum winners stakes: ${sumWinnersStakes}`,
     `Winning pool total shares: ${winningPoolTotalShares}`,
-  ]);
+  ], "submitFightResult");
 
   // Request confirmation
   await requestConfirmation(args);

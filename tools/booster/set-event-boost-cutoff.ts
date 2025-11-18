@@ -79,7 +79,7 @@ async function main() {
   summaryLines.push("Note: Only fights that are not resolved will be updated.");
 
   // Display transaction summary
-  displayTransactionSummary(config, summaryLines);
+  displayTransactionSummary(config, summaryLines, "setEventBoostCutoff");
 
   // Request confirmation
   await requestConfirmation(args);

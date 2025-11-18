@@ -90,11 +90,11 @@ export function getContractAddress(
   
   if (networkMode === "testnet") {
     return (
-      process.env.BOOSTER_TESTNET_ADDRESS || process.env.BOOSTER_ADDRESS || ""
+      process.env.TESTNET_BOOSTER_ADDRESS || process.env.BOOSTER_ADDRESS || ""
     );
   } else {
     return (
-      process.env.BOOSTER_MAINNET_ADDRESS || process.env.BOOSTER_ADDRESS || ""
+      process.env.MAINNET_BOOSTER_ADDRESS || process.env.BOOSTER_ADDRESS || ""
     );
   }
 }
@@ -183,8 +183,8 @@ export async function setupBoosterConfig(
   if (!contractAddress) {
     throw new Error(
       `Missing contract address. Set --contract or configure in .env:\n` +
-        `  - For testnet: BOOSTER_TESTNET_ADDRESS\n` +
-        `  - For mainnet: BOOSTER_MAINNET_ADDRESS\n` +
+        `  - For testnet: TESTNET_BOOSTER_ADDRESS\n` +
+        `  - For mainnet: MAINNET_BOOSTER_ADDRESS\n` +
         `  - Or generic: BOOSTER_ADDRESS`
     );
   }
@@ -210,11 +210,15 @@ export async function setupBoosterConfig(
  */
 export function displayTransactionSummary(
   config: BoosterConfig,
-  summaryLines: string[]
+  summaryLines: string[],
+  functionName?: string
 ): void {
   console.log("\n📋 Transaction Summary:");
   console.log(`  Network: ${config.networkMode.toUpperCase()}`);
   console.log(`  Contract: ${config.contractAddress}`);
+  if (functionName) {
+    console.log(`  Function: ${functionName}`);
+  }
   summaryLines.forEach((line) => console.log(`  ${line}`));
 }
 
@@ -248,14 +252,6 @@ export async function waitForTransaction(
   console.log("\n✅ Transaction submitted!");
   console.log(`Transaction hash: ${tx.hash}`);
 
-  // Generate and display block explorer link
-  const explorerUrl = getExplorerUrl(chainId, tx.hash);
-  if (explorerUrl) {
-    console.log(`View on block explorer: ${explorerUrl}`);
-  } else {
-    console.log(`⚠️  Block explorer not configured for chain ID ${chainId}`);
-  }
-
   console.log("\n⏳ Waiting for transaction to be mined...");
   const receipt = await tx.wait();
   if (!receipt) {
@@ -263,9 +259,12 @@ export async function waitForTransaction(
   }
   console.log(`✅ Transaction mined in block ${receipt.blockNumber}`);
 
-  // Show explorer link again after confirmation
+  // Display block explorer link after confirmation
+  const explorerUrl = getExplorerUrl(chainId, tx.hash);
   if (explorerUrl) {
     console.log(`View on block explorer: ${explorerUrl}`);
+  } else {
+    console.log(`⚠️  Block explorer not configured for chain ID ${chainId}`);
   }
 
   return receipt;

@@ -12,13 +12,11 @@
  *
  * @example Using alternative parameter names
  * ts-node tools/booster/create-event.ts --network testnet --event 322 --fights 10 --season 322
- * ts-node tools/booster/create-event.ts --network mainnet --event ufc-fight-night-nov-22-2025 --fights 10 --season 322
+ * ts-node tools/booster/create-event.ts --network testnet --event ufc-fight-night-nov-22-2025 --fights 10 --season 323
  *
  * @example Skip confirmation prompt
  * ts-node tools/booster/create-event.ts --network testnet --eventId 322 --numFights 10 --seasonId 322 --yes
  *
- * @env MAINNET_BSC_EXPLORER_URL - Block explorer URL for BSC Mainnet (default: https://bscscan.com)
- * @env TESTNET_BSC_EXPLORER_URL - Block explorer URL for BSC Testnet (default: https://testnet.bscscan.com)
  */
 import "dotenv/config";
 import { ethers } from "ethers";
@@ -57,7 +55,7 @@ async function main() {
     `Event ID: ${eventId}`,
     `Number of fights: ${numFights}`,
     `Season ID: ${seasonId}`,
-  ]);
+  ], "createEvent");
 
   // Request confirmation
   await requestConfirmation(args);

@@ -86,7 +86,7 @@ async function main() {
   }
 
   // Display transaction summary
-  displayTransactionSummary(config, summaryLines);
+  displayTransactionSummary(config, summaryLines, "setFightBoostCutoff");
 
   // Request confirmation
   await requestConfirmation(args);
