@@ -85,6 +85,10 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
     // Minimum boost amount per boost (can be 0 to disable)
     uint256 public minBoostAmount;
 
+    // Maximum limits for operational safety
+    uint256 public maxFightsPerEvent;
+    uint256 public maxBonusDeposit;
+
     // eventId => Event
     mapping(string => Event) private events;
 
@@ -104,6 +108,8 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
     event FightBoostCutoffUpdated(string indexed eventId, uint256 indexed fightId, uint256 cutoff);
     event FightCancelled(string indexed eventId, uint256 indexed fightId);
     event MinBoostAmountUpdated(uint256 oldAmount, uint256 newAmount);
+    event MaxFightsPerEventUpdated(uint256 oldLimit, uint256 newLimit);
+    event MaxBonusDepositUpdated(uint256 oldLimit, uint256 newLimit);
     event BonusDeposited(string indexed eventId, uint256 indexed fightId, address indexed manager, uint256 amount);
     event BoostPlaced(
         string indexed eventId,
@@ -150,6 +156,8 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
 
         FP = FP1155(_fp);
         minBoostAmount = 0; // Default: no minimum
+        maxFightsPerEvent = 20; // Default: 20 fights per event
+        maxBonusDeposit = 0; // Default: no maximum (0 = unlimited)
         _grantRole(DEFAULT_ADMIN_ROLE, admin);
     }
 
@@ -166,6 +174,26 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
     }
 
     /**
+     * @notice Set maximum number of fights per event (0 to disable)
+     * @param newMax New maximum number of fights per event
+     */
+    function setMaxFightsPerEvent(uint256 newMax) external onlyRole(OPERATOR_ROLE) {
+        uint256 oldMax = maxFightsPerEvent;
+        maxFightsPerEvent = newMax;
+        emit MaxFightsPerEventUpdated(oldMax, newMax);
+    }
+
+    /**
+     * @notice Set maximum bonus deposit amount (0 to disable)
+     * @param newMax New maximum bonus deposit amount in FP tokens
+     */
+    function setMaxBonusDeposit(uint256 newMax) external onlyRole(OPERATOR_ROLE) {
+        uint256 oldMax = maxBonusDeposit;
+        maxBonusDeposit = newMax;
+        emit MaxBonusDepositUpdated(oldMax, newMax);
+    }
+
+    /**
      * @notice Create a new event with multiple fights
      * @param eventId Unique identifier for the event (e.g., "UFC_300")
      * @param numFights Number of fights in the event (fights are 1, 2, 3, ..., numFights)
@@ -177,6 +205,10 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
     {
         require(!events[eventId].exists, "event exists");
         require(numFights > 0, "no fights");
+        require(
+            maxFightsPerEvent == 0 || numFights <= maxFightsPerEvent,
+            "numFights exceeds maximum"
+        );
 
         // Verify season is valid and open
         require(FP.seasonStatus(seasonId) == FP1155.SeasonStatus.OPEN, "season not open");
@@ -338,6 +370,10 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
     {
         require(events[eventId].exists, "event not exists");
         require(amount > 0, "amount=0");
+        require(
+            maxBonusDeposit == 0 || amount <= maxBonusDeposit,
+            "bonus deposit exceeds maximum"
+        );
 
         Fight storage fight = fights[eventId][fightId];
         require(fight.status != FightStatus.RESOLVED, "fight resolved");

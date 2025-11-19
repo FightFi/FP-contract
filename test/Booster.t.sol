@@ -1146,6 +1146,106 @@ contract BoosterTest is Test {
         booster.addToBoost(EVENT_1, FIGHT_1, 0, 10 ether);
     }
 
+    // ============ Maximum Limits Tests ============
+
+    function test_setMaxFightsPerEvent() public {
+        vm.prank(operator);
+        vm.expectEmit(false, false, false, true);
+        emit Booster.MaxFightsPerEventUpdated(20, 50);
+        booster.setMaxFightsPerEvent(50);
+
+        assertEq(booster.maxFightsPerEvent(), 50);
+    }
+
+    function test_createEvent_withinMaxFights() public {
+        // Default max is 20, create event with 20 fights
+        vm.prank(operator);
+        booster.createEvent(EVENT_1, 20, SEASON_1);
+
+        (,, bool exists) = booster.getEvent(EVENT_1);
+        assertTrue(exists);
+    }
+
+    function testRevert_createEvent_exceedsMaxFights() public {
+        // Default max is 20, try to create event with 21 fights
+        vm.prank(operator);
+        vm.expectRevert("numFights exceeds maximum");
+        booster.createEvent(EVENT_1, 21, SEASON_1);
+    }
+
+    function test_createEvent_unlimitedWhenMaxIsZero() public {
+        // Set max to 0 (unlimited)
+        vm.prank(operator);
+        booster.setMaxFightsPerEvent(0);
+
+        // Should be able to create event with any number of fights
+        vm.prank(operator);
+        booster.createEvent(EVENT_1, 100, SEASON_1);
+
+        (,, bool exists) = booster.getEvent(EVENT_1);
+        assertTrue(exists);
+    }
+
+    function test_setMaxBonusDeposit() public {
+        vm.prank(operator);
+        vm.expectEmit(false, false, false, true);
+        emit Booster.MaxBonusDepositUpdated(0, 1000 ether);
+        booster.setMaxBonusDeposit(1000 ether);
+
+        assertEq(booster.maxBonusDeposit(), 1000 ether);
+    }
+
+    function test_depositBonus_withinMax() public {
+        _createDefaultEvent();
+
+        // Set max bonus deposit
+        vm.prank(operator);
+        booster.setMaxBonusDeposit(1000 ether);
+
+        // Should be able to deposit up to the limit
+        vm.prank(operator);
+        booster.depositBonus(EVENT_1, FIGHT_1, 1000 ether);
+
+        (,,, uint256 bonusPool,,,,,,,,) = booster.getFight(EVENT_1, FIGHT_1);
+        assertEq(bonusPool, 1000 ether);
+    }
+
+    function testRevert_depositBonus_exceedsMax() public {
+        _createDefaultEvent();
+
+        // Set max bonus deposit
+        vm.prank(operator);
+        booster.setMaxBonusDeposit(1000 ether);
+
+        // Try to deposit more than the limit
+        vm.prank(operator);
+        vm.expectRevert("bonus deposit exceeds maximum");
+        booster.depositBonus(EVENT_1, FIGHT_1, 1001 ether);
+    }
+
+    function test_depositBonus_unlimitedWhenMaxIsZero() public {
+        _createDefaultEvent();
+
+        // Max is 0 by default (unlimited), should be able to deposit any amount
+        vm.prank(operator);
+        booster.depositBonus(EVENT_1, FIGHT_1, 10000 ether);
+
+        (,,, uint256 bonusPool,,,,,,,,) = booster.getFight(EVENT_1, FIGHT_1);
+        assertEq(bonusPool, 10000 ether);
+    }
+
+    function testRevert_setMaxFightsPerEvent_notOperator() public {
+        vm.prank(user1);
+        vm.expectRevert();
+        booster.setMaxFightsPerEvent(50);
+    }
+
+    function testRevert_setMaxBonusDeposit_notOperator() public {
+        vm.prank(user1);
+        vm.expectRevert();
+        booster.setMaxBonusDeposit(1000 ether);
+    }
+
     // ============ Points Validation Tests ============
 
     function testRevert_submitResult_zeroPointsForWinner() public {
