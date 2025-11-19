@@ -140,11 +140,11 @@ contract FP1155 is
         if (_seasonStatus[seasonId] != SeasonStatus.OPEN) {
             return false;
         }
-        // If destination has TRANSFER_AGENT_ROLE, only destination needs to be allowed
-        // Otherwise, both endpoints must be allowed
-        if (hasRole(TRANSFER_AGENT_ROLE, to)) {
-            return endpointAllowed(to);
+        // If either endpoint has TRANSFER_AGENT_ROLE, transfer is allowed
+        if (hasRole(TRANSFER_AGENT_ROLE, from) || hasRole(TRANSFER_AGENT_ROLE, to)) {
+            return true;
         }
+        // Otherwise, both endpoints must be allowed
         return endpointAllowed(from) && endpointAllowed(to);
     }
 

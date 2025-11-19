@@ -441,8 +441,9 @@ contract FP1155Test is Test {
         // Remove bob from allowlist to test non-allowlisted destination
         vm.prank(admin);
         fp.setTransferAllowlist(bob, false);
-        // transfer from agent to non-allowlisted bob should fail
-        assertFalse(fp.isTransfersAllowed(agent, bob, S2));
+        // transfer from agent to non-allowlisted bob should succeed
+        // (agents can transfer to anyone, consistent with _update() logic)
+        assertTrue(fp.isTransfersAllowed(agent, bob, S2));
         // Add bob back to allowlist
         vm.prank(admin);
         fp.setTransferAllowlist(bob, true);
