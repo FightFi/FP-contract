@@ -168,6 +168,8 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
      * @param newMin New minimum boost amount in FP wei
      */
     function setMinBoostAmount(uint256 newMin) external onlyRole(OPERATOR_ROLE) {
+        // Short-circuit if value already matches to avoid redundant storage writes and events
+        if (minBoostAmount == newMin) return;
         uint256 oldMin = minBoostAmount;
         minBoostAmount = newMin;
         emit MinBoostAmountUpdated(oldMin, newMin);
@@ -178,6 +180,8 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
      * @param newMax New maximum number of fights per event
      */
     function setMaxFightsPerEvent(uint256 newMax) external onlyRole(OPERATOR_ROLE) {
+        // Short-circuit if value already matches to avoid redundant storage writes and events
+        if (maxFightsPerEvent == newMax) return;
         uint256 oldMax = maxFightsPerEvent;
         maxFightsPerEvent = newMax;
         emit MaxFightsPerEventUpdated(oldMax, newMax);
@@ -188,6 +192,8 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
      * @param newMax New maximum bonus deposit amount in FP tokens
      */
     function setMaxBonusDeposit(uint256 newMax) external onlyRole(OPERATOR_ROLE) {
+        // Short-circuit if value already matches to avoid redundant storage writes and events
+        if (maxBonusDeposit == newMax) return;
         uint256 oldMax = maxBonusDeposit;
         maxBonusDeposit = newMax;
         emit MaxBonusDepositUpdated(oldMax, newMax);
@@ -263,6 +269,8 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
         Fight storage fight = fights[eventId][fightId];
         require(fight.status != FightStatus.RESOLVED, "fight resolved");
 
+        // Short-circuit if value already matches to avoid redundant storage writes and events
+        if (fight.boostCutoff == cutoff) return;
         fight.boostCutoff = cutoff;
         emit FightBoostCutoffUpdated(eventId, fightId, cutoff);
     }
@@ -281,8 +289,11 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
             Fight storage fight = fights[eventId][i];
             // Only set cutoff for fights that are not resolved
             if (fight.status != FightStatus.RESOLVED) {
-                fight.boostCutoff = cutoff;
-                emit FightBoostCutoffUpdated(eventId, i, cutoff);
+                // Only update and emit if value actually changed
+                if (fight.boostCutoff != cutoff) {
+                    fight.boostCutoff = cutoff;
+                    emit FightBoostCutoffUpdated(eventId, i, cutoff);
+                }
             }
         }
     }
@@ -312,6 +323,8 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
     function setEventClaimDeadline(string calldata eventId, uint256 deadline) external onlyRole(OPERATOR_ROLE) {
         require(events[eventId].exists, "event not exists");
         uint256 current = events[eventId].claimDeadline;
+        // Short-circuit if value already matches to avoid redundant storage writes and events
+        if (current == deadline) return;
         if (current != 0) {
             require(deadline == 0 || deadline >= current, "deadline decrease");
         }

@@ -96,13 +96,17 @@ contract FP1155 is
     }
 
     function setTransferAllowlist(address account, bool allowed) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        // Short-circuit if value already matches to avoid redundant storage writes and events
+        if (_allowlist[account] == allowed) return;
         _allowlist[account] = allowed;
         emit AllowlistUpdated(account, allowed);
     }
 
     function setSeasonStatus(uint256 seasonId, SeasonStatus status) external onlyRole(SEASON_ADMIN_ROLE) {
-        // Irreversible lock: cannot move from LOCKED to OPEN
         SeasonStatus current = _seasonStatus[seasonId];
+        // Short-circuit if value already matches to avoid redundant storage writes and events
+        if (current == status) return;
+        // Irreversible lock: cannot move from LOCKED to OPEN
         if (current == SeasonStatus.LOCKED) {
             require(status == SeasonStatus.LOCKED, "locked: irreversible");
         }
