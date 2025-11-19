@@ -89,6 +89,16 @@ contract Booster is
         uint256[] boostIndices;
     }
 
+    struct FightResultInput {
+        uint256 fightId;
+        Corner winner;
+        WinMethod method;
+        uint256 pointsForWinner;
+        uint256 pointsForWinnerMethod;
+        uint256 sumWinnersStakes;
+        uint256 winningPoolTotalShares;
+    }
+
     // ============ Storage ============
     FP1155 public FP;
 
@@ -435,43 +445,9 @@ contract Booster is
         require(!events[eventId].claimReady, "event claim ready");
 
         Event storage evt = events[eventId];
-        require(fightId >= 1 && fightId <= evt.numFights, "fightId not in event");
-
-        // Validate points parameters
-        require(pointsForWinner > 0, "points for winner must be > 0");
-        require(pointsForWinnerMethod >= pointsForWinner, "method points must be >= winner points");
-
-        // Validate winner/method consistency
-        if (winner == Corner.NONE) {
-            require(method == WinMethod.NO_CONTEST, "NONE winner requires NO_CONTEST method");
-        } else {
-            // if there are winners, sumWinnersStakes and winningPoolTotalShares must be > 0
-            if (sumWinnersStakes > 0) {
-                require(winningPoolTotalShares > 0, "winningPoolTotalShares must be > 0 if sumWinnersStakes > 0");
-            }
-            if (winningPoolTotalShares > 0) {
-                require(sumWinnersStakes > 0, "sumWinnersStakes must be > 0 if winningPoolTotalShares > 0");
-            }
-        }
-
-        Fight storage fight = fights[eventId][fightId];
-        require(!fight.cancelled, "fight cancelled");
-        // If there are winners, they must be a subset of all users who placed boosts
-        if (sumWinnersStakes > 0) {
-            require(sumWinnersStakes <= fight.originalPool, "sumWinnersStakes exceeds originalPool");
-        }
-
-        // Store result
-        fight.status = FightStatus.RESOLVED;
-        fight.winner = winner;
-        fight.method = method;
-        fight.pointsForWinner = pointsForWinner;
-        fight.pointsForWinnerMethod = pointsForWinnerMethod;
-        fight.sumWinnersStakes = sumWinnersStakes;
-        fight.winningPoolTotalShares = winningPoolTotalShares;
-
-        emit FightResultSubmitted(
+        _submitFightResult(
             eventId,
+            evt,
             fightId,
             winner,
             method,
@@ -480,6 +456,41 @@ contract Booster is
             sumWinnersStakes,
             winningPoolTotalShares
         );
+    }
+
+    /**
+     * @notice Server submits multiple fight results in batch
+     * @param eventId Event identifier
+     * @param inputs Array of fight result inputs
+     * @dev Can be called multiple times to update results until the event is marked as claimReady
+     *      Each input is validated with the same rules as submitFightResult
+     */
+    function submitFightResults(string calldata eventId, FightResultInput[] calldata inputs)
+        external
+        onlyRole(OPERATOR_ROLE)
+    {
+        require(events[eventId].exists, "event not exists");
+        // Cannot update results once event is claim ready
+        require(!events[eventId].claimReady, "event claim ready");
+        require(inputs.length > 0, "no inputs");
+
+        Event storage evt = events[eventId];
+        require(inputs.length <= evt.numFights, "too many inputs");
+
+        for (uint256 i = 0; i < inputs.length; i++) {
+            FightResultInput calldata input = inputs[i];
+            _submitFightResult(
+                eventId,
+                evt,
+                input.fightId,
+                input.winner,
+                input.method,
+                input.pointsForWinner,
+                input.pointsForWinnerMethod,
+                input.sumWinnersStakes,
+                input.winningPoolTotalShares
+            );
+        }
     }
 
     // ============ User Functions ============
@@ -657,6 +668,7 @@ contract Booster is
         require(inputs.length > 0, "no claims");
 
         Event storage evt = events[eventId];
+        require(inputs.length <= evt.numFights, "too many inputs");
         // Require event to be claim ready before allowing claims
         require(evt.claimReady, "event not claim ready");
         uint256 deadline = evt.claimDeadline;
@@ -930,6 +942,76 @@ contract Booster is
     }
 
     // ============ Internal Helper Functions ============
+
+    /**
+     * @notice Internal function to validate and store a fight result
+     * @param eventId Event identifier
+     * @param evt Event storage reference (must be validated before calling)
+     * @param fightId Fight number
+     * @param winner Which corner won
+     * @param method How they won
+     * @param pointsForWinner Points awarded for correct winner only
+     * @param pointsForWinnerMethod Points awarded for correct winner AND method
+     * @param sumWinnersStakes Sum of all winning users' stakes
+     * @param winningPoolTotalShares Total shares (sum of points * stakes for all winners)
+     */
+    function _submitFightResult(
+        string calldata eventId,
+        Event storage evt,
+        uint256 fightId,
+        Corner winner,
+        WinMethod method,
+        uint256 pointsForWinner,
+        uint256 pointsForWinnerMethod,
+        uint256 sumWinnersStakes,
+        uint256 winningPoolTotalShares
+    ) internal {
+        require(fightId >= 1 && fightId <= evt.numFights, "fightId not in event");
+
+        // Validate points parameters
+        require(pointsForWinner > 0, "points for winner must be > 0");
+        require(pointsForWinnerMethod >= pointsForWinner, "method points must be >= winner points");
+
+        // Validate winner/method consistency
+        if (winner == Corner.NONE) {
+            require(method == WinMethod.NO_CONTEST, "NONE winner requires NO_CONTEST method");
+        } else {
+            // if there are winners, sumWinnersStakes and winningPoolTotalShares must be > 0
+            if (sumWinnersStakes > 0) {
+                require(winningPoolTotalShares > 0, "winningPoolTotalShares must be > 0 if sumWinnersStakes > 0");
+            }
+            if (winningPoolTotalShares > 0) {
+                require(sumWinnersStakes > 0, "sumWinnersStakes must be > 0 if winningPoolTotalShares > 0");
+            }
+        }
+
+        Fight storage fight = fights[eventId][fightId];
+        require(!fight.cancelled, "fight cancelled");
+        // If there are winners, they must be a subset of all users who placed boosts
+        if (sumWinnersStakes > 0) {
+            require(sumWinnersStakes <= fight.originalPool, "sumWinnersStakes exceeds originalPool");
+        }
+
+        // Store result
+        fight.status = FightStatus.RESOLVED;
+        fight.winner = winner;
+        fight.method = method;
+        fight.pointsForWinner = pointsForWinner;
+        fight.pointsForWinnerMethod = pointsForWinnerMethod;
+        fight.sumWinnersStakes = sumWinnersStakes;
+        fight.winningPoolTotalShares = winningPoolTotalShares;
+
+        emit FightResultSubmitted(
+            eventId,
+            fightId,
+            winner,
+            method,
+            pointsForWinner,
+            pointsForWinnerMethod,
+            sumWinnersStakes,
+            winningPoolTotalShares
+        );
+    }
 
     /**
      * @notice Process refund for cancelled fight boosts
