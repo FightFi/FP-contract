@@ -520,10 +520,7 @@ contract Booster is
             require(fight.status == FightStatus.OPEN, "fight not open");
             require(!fight.cancelled, "fight cancelled");
 
-            // Check boost cutoff if set
-            if (fight.boostCutoff > 0) {
-                require(block.timestamp < fight.boostCutoff, "boost cutoff passed");
-            }
+            _validateBoostCutoff(fight);
 
             // Create boost
             Boost memory newBoost = Boost({
@@ -578,10 +575,7 @@ contract Booster is
         require(fight.status == FightStatus.OPEN, "fight not open");
         require(!fight.cancelled, "fight cancelled");
 
-        // Check boost cutoff if set
-        if (fight.boostCutoff > 0) {
-            require(block.timestamp < fight.boostCutoff, "boost cutoff passed");
-        }
+        _validateBoostCutoff(fight);
 
         Boost[] storage fightBoosts = boosts[eventId][fightId];
         require(boostIndex < fightBoosts.length, "invalid boost index");
@@ -889,6 +883,16 @@ contract Booster is
      */
     function _validateFightId(Event storage evt, uint256 fightId) internal view {
         require(fightId >= 1 && fightId <= evt.numFights, "fightId not in event");
+    }
+
+    /**
+     * @notice Validate that boost cutoff time has not passed
+     * @param fight Fight storage reference
+     */
+    function _validateBoostCutoff(Fight storage fight) internal view {
+        if (fight.boostCutoff > 0) {
+            require(block.timestamp < fight.boostCutoff, "boost cutoff passed");
+        }
     }
 
     /**
