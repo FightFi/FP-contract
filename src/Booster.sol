@@ -318,7 +318,7 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
         }
 
         if (totalSweep > 0) {
-            FP.safeTransferFrom(address(this), recipient, evt.seasonId, totalSweep, "");
+            FP.agentTransferFrom(address(this), recipient, evt.seasonId, totalSweep, "");
         }
         emit EventPurged(eventId, recipient, totalSweep);
     }
@@ -551,7 +551,7 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
             // Update claimed amount to reflect refunds paid
             fight.claimedAmount += refund;
             
-            FP.safeTransferFrom(address(this), msg.sender, seasonId, refund, "");
+            FP.agentTransferFrom(address(this), msg.sender, seasonId, refund, "");
             return;
         }
 
@@ -570,7 +570,7 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
 
         // Transfer total payout to user
         if (totalPayout > 0) {
-            FP.safeTransferFrom(address(this), msg.sender, seasonId, totalPayout, "");
+            FP.agentTransferFrom(address(this), msg.sender, seasonId, totalPayout, "");
         }
     }
 
@@ -629,7 +629,7 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
 
         // Transfer total payout to user
         require(totalPayout > 0, "nothing to claim");
-        FP.safeTransferFrom(address(this), msg.sender, seasonId, totalPayout, "");
+        FP.agentTransferFrom(address(this), msg.sender, seasonId, totalPayout, "");
     }
 
     // ============ View Functions ============

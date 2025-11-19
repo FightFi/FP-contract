@@ -113,21 +113,19 @@ contract DepositTest is Test {
         deposit.withdraw(season2, 3);
     }
 
-    function test_NotAllowlistedUser_CanDepositButNotWithdraw() public {
+    function test_NotAllowlistedUser_CannotDeposit() public {
         // Remove user from allowlist
         fp.setTransferAllowlist(user, false);
 
-        // Deposit should succeed because destination (Deposit contract) has TRANSFER_AGENT_ROLE
+        // Deposit should revert because user is not allowlisted
+        // This prevents the asymmetric allowlist enforcement issue where
+        // non-allowlisted users could deposit but not withdraw
         vm.prank(user);
+        vm.expectRevert(bytes("deposit: user not allowed"));
         deposit.deposit(SEASON, 5);
-        assertEq(deposit.deposited(user, SEASON), 5);
-        assertEq(fp.balanceOf(user, SEASON), 95);
 
-        // With the new transfer logic, agents (Deposit contract) can transfer to anyone
-        // So withdraw now succeeds even for non-allowlisted users
-        vm.prank(user);
-        deposit.withdraw(SEASON, 2);
-        assertEq(deposit.deposited(user, SEASON), 3);
-        assertEq(fp.balanceOf(user, SEASON), 97);
+        // Verify user's balance is unchanged
+        assertEq(deposit.deposited(user, SEASON), 0);
+        assertEq(fp.balanceOf(user, SEASON), 100);
     }
 }
