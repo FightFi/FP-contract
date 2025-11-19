@@ -1127,6 +1127,65 @@ contract BoosterTest is Test {
         assertEq(userBoosts[1].amount, 200 ether);
     }
 
+    function test_getEventFights() public {
+        // Create event with 5 fights
+        vm.prank(operator);
+        booster.createEvent(EVENT_1, 5, SEASON_1, 0);
+
+        // Get all fights - should all be OPEN initially
+        (uint256[] memory fightIds, Booster.FightStatus[] memory statuses) = booster.getEventFights(EVENT_1);
+
+        assertEq(fightIds.length, 5, "Should have 5 fights");
+        assertEq(statuses.length, 5, "Should have 5 statuses");
+
+        // Verify fight IDs are 1, 2, 3, 4, 5
+        for (uint256 i = 0; i < 5; i++) {
+            assertEq(fightIds[i], i + 1, "Fight ID should match index + 1");
+            assertEq(
+                uint256(statuses[i]), uint256(Booster.FightStatus.OPEN), "All fights should be OPEN initially"
+            );
+        }
+
+        // Update some fight statuses
+        vm.prank(operator);
+        booster.updateFightStatus(EVENT_1, 1, Booster.FightStatus.CLOSED);
+
+        vm.prank(operator);
+        booster.updateFightStatus(EVENT_1, 2, Booster.FightStatus.CLOSED);
+
+        vm.prank(operator);
+        booster.updateFightStatus(EVENT_1, 3, Booster.FightStatus.RESOLVED);
+
+        // Get fights again and verify statuses
+        (fightIds, statuses) = booster.getEventFights(EVENT_1);
+
+        assertEq(uint256(statuses[0]), uint256(Booster.FightStatus.CLOSED), "Fight 1 should be CLOSED");
+        assertEq(uint256(statuses[1]), uint256(Booster.FightStatus.CLOSED), "Fight 2 should be CLOSED");
+        assertEq(uint256(statuses[2]), uint256(Booster.FightStatus.RESOLVED), "Fight 3 should be RESOLVED");
+        assertEq(uint256(statuses[3]), uint256(Booster.FightStatus.OPEN), "Fight 4 should be OPEN");
+        assertEq(uint256(statuses[4]), uint256(Booster.FightStatus.OPEN), "Fight 5 should be OPEN");
+    }
+
+    function testRevert_getEventFights_eventNotExists() public {
+        vm.expectRevert("event not exists");
+        booster.getEventFights(EVENT_1);
+    }
+
+    function test_getEventFights_singleFight() public {
+        // Create event with 1 fight
+        vm.prank(operator);
+        booster.createEvent(EVENT_1, 1, SEASON_1, 0);
+
+        (uint256[] memory fightIds, Booster.FightStatus[] memory statuses) = booster.getEventFights(EVENT_1);
+
+        assertEq(fightIds.length, 1, "Should have 1 fight");
+        assertEq(statuses.length, 1, "Should have 1 status");
+        assertEq(fightIds[0], 1, "Fight ID should be 1");
+        assertEq(
+            uint256(statuses[0]), uint256(Booster.FightStatus.OPEN), "Fight should be OPEN initially"
+        );
+    }
+
     // ============ Helper Functions ============
 
     function _createDefaultEvent() internal {

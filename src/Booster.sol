@@ -686,6 +686,29 @@ contract Booster is
     }
 
     /**
+     * @notice Get all fights for an event with their statuses
+     * @param eventId Event identifier
+     * @return fightIds Array of fight IDs (1, 2, 3, ..., numFights)
+     * @return statuses Array of fight statuses corresponding to each fight ID
+     */
+    function getEventFights(string calldata eventId)
+        external
+        view
+        returns (uint256[] memory fightIds, FightStatus[] memory statuses)
+    {
+        Event storage evt = events[eventId];
+        require(evt.exists, "event not exists");
+
+        fightIds = new uint256[](evt.numFights);
+        statuses = new FightStatus[](evt.numFights);
+
+        for (uint256 i = 1; i <= evt.numFights; i++) {
+            fightIds[i - 1] = i;
+            statuses[i - 1] = fights[eventId][i].status;
+        }
+    }
+
+    /**
      * @notice Get fight details
      * @param eventId Event identifier
      * @param fightId Fight number
