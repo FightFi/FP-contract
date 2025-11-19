@@ -398,6 +398,13 @@ contract Booster is AccessControl, ReentrancyGuard, ERC1155Holder {
         fight.sumWinnersStakes = sumWinnersStakes;
         fight.winningPoolTotalShares = winningPoolTotalShares;
 
+        // Auto-set cancelled flag for no-contest outcomes to enable refunds
+        // This ensures consistent behavior whether cancelFight() or submitFightResult()
+        // is used to declare a no-contest
+        if (winner == Corner.NONE) {
+            fight.cancelled = true;
+        }
+
         emit FightResultSubmitted(
             eventId,
             fightId,

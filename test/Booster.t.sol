@@ -1179,9 +1179,39 @@ contract BoosterTest is Test {
         vm.prank(operator);
         booster.submitFightResult(EVENT_1, FIGHT_1, Booster.Corner.NONE, Booster.WinMethod.NO_CONTEST, 10, 20, 10, 3);
 
-        (, Booster.Corner winner, Booster.WinMethod method,,,,,,,,,) = booster.getFight(EVENT_1, FIGHT_1);
+        (, Booster.Corner winner, Booster.WinMethod method,,,,,,,,, bool cancelled) = booster.getFight(EVENT_1, FIGHT_1);
         assertEq(uint256(winner), uint256(Booster.Corner.NONE));
         assertEq(uint256(method), uint256(Booster.WinMethod.NO_CONTEST));
+        // Verify that cancelled flag is automatically set for no-contest outcomes
+        assertTrue(cancelled, "fight should be marked as cancelled for no-contest");
+    }
+
+    function test_submitResult_noContest_enablesRefunds() public {
+        _createDefaultEvent();
+        _placeMultipleBoosts();
+
+        uint256 user1Before = fp.balanceOf(user1, SEASON_1);
+        uint256 user2Before = fp.balanceOf(user2, SEASON_1);
+
+        // Submit no-contest result via submitFightResult
+        vm.prank(operator);
+        booster.submitFightResult(EVENT_1, FIGHT_1, Booster.Corner.NONE, Booster.WinMethod.NO_CONTEST, 10, 20, 0, 0);
+
+        // Verify fight is marked as cancelled
+        (,,,,,,,,,,, bool cancelled) = booster.getFight(EVENT_1, FIGHT_1);
+        assertTrue(cancelled, "fight should be marked as cancelled");
+
+        // Users should be able to claim refunds
+        uint256[] memory indices1 = booster.getUserBoostIndices(EVENT_1, FIGHT_1, user1);
+        uint256[] memory indices2 = booster.getUserBoostIndices(EVENT_1, FIGHT_1, user2);
+
+        vm.prank(user1);
+        booster.claimReward(EVENT_1, FIGHT_1, indices1);
+        assertEq(fp.balanceOf(user1, SEASON_1), user1Before + 100 ether);
+
+        vm.prank(user2);
+        booster.claimReward(EVENT_1, FIGHT_1, indices2);
+        assertEq(fp.balanceOf(user2, SEASON_1), user2Before + 200 ether);
     }
 
     // ============ Claim Rewards (Multiple Fights) Tests ============
