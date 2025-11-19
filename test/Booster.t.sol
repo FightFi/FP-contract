@@ -1141,9 +1141,7 @@ contract BoosterTest is Test {
         // Verify fight IDs are 1, 2, 3, 4, 5
         for (uint256 i = 0; i < 5; i++) {
             assertEq(fightIds[i], i + 1, "Fight ID should match index + 1");
-            assertEq(
-                uint256(statuses[i]), uint256(Booster.FightStatus.OPEN), "All fights should be OPEN initially"
-            );
+            assertEq(uint256(statuses[i]), uint256(Booster.FightStatus.OPEN), "All fights should be OPEN initially");
         }
 
         // Update some fight statuses
@@ -1181,9 +1179,7 @@ contract BoosterTest is Test {
         assertEq(fightIds.length, 1, "Should have 1 fight");
         assertEq(statuses.length, 1, "Should have 1 status");
         assertEq(fightIds[0], 1, "Fight ID should be 1");
-        assertEq(
-            uint256(statuses[0]), uint256(Booster.FightStatus.OPEN), "Fight should be OPEN initially"
-        );
+        assertEq(uint256(statuses[0]), uint256(Booster.FightStatus.OPEN), "Fight should be OPEN initially");
     }
 
     // ============ Helper Functions ============

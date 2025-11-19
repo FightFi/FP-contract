@@ -342,7 +342,9 @@ contract Booster is
     /**
      * @notice Set event claim ready state
      * @dev When claimReady is true, fight results cannot be updated and claims are enabled
-     *      When claimReady is false, fight results can be updated and claims are disabled (only emergency use)
+     *      When claimReady is false, fight results can be updated and claims are disabled.
+     *      Setting claimReady to false should NOT be used in normal operations. It is only for
+     *      flexibility in case of inconsistent results that need to be corrected before allowing claims.
      * @param eventId Event identifier
      * @param claimReady Whether the event should be claim ready (true) or not (false)
      */
@@ -1031,7 +1033,7 @@ contract Booster is
         }
 
         // Ensure sumWinnersStakes doesn't exceed originalPool (winners are subset of all users)
-        require(fight.sumWinnersStakes <= fight.originalPool, "invalid winners stakes");
+        require(fight.sumWinnersStakes <= fight.originalPool, "sumWinnersStakes exceeds originalPool");
 
         for (uint256 i = 0; i < boostIndices.length; i++) {
             payout += _processWinningBoostClaim(
