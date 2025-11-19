@@ -514,7 +514,7 @@ contract Booster is
             require(input.amount >= minBoostAmount, "below min boost");
 
             // Validate that fightId exists in the event (O(1) range check: fights are 1, 2, 3, ..., numFights)
-            require(input.fightId >= 1 && input.fightId <= evt.numFights, "fightId not in event");
+            _validateFightId(evt, input.fightId);
 
             Fight storage fight = fights[eventId][input.fightId];
             require(fight.status == FightStatus.OPEN, "fight not open");
@@ -572,7 +572,7 @@ contract Booster is
         require(additionalAmount >= minBoostAmount, "below min boost");
 
         Event storage evt = events[eventId];
-        require(fightId >= 1 && fightId <= evt.numFights, "fightId not in event");
+        _validateFightId(evt, fightId);
 
         Fight storage fight = fights[eventId][fightId];
         require(fight.status == FightStatus.OPEN, "fight not open");
@@ -615,7 +615,6 @@ contract Booster is
         require(boostIndices.length > 0, "no boost indices");
 
         Event storage evt = events[eventId];
-        require(fightId >= 1 && fightId <= evt.numFights, "fightId not in event");
         require(evt.claimReady, "event not claim ready");
 
         uint256 deadline = evt.claimDeadline;
@@ -647,7 +646,6 @@ contract Booster is
 
         for (uint256 j = 0; j < inputs.length; j++) {
             ClaimInput calldata input = inputs[j];
-            require(input.fightId >= 1 && input.fightId <= evt.numFights, "fightId not in event");
             require(input.boostIndices.length > 0, "no boost indices");
 
             totalPayout += _processFightClaim(eventId, input.fightId, input.boostIndices, msg.sender, false);
@@ -885,6 +883,15 @@ contract Booster is
     // ============ Internal Helper Functions ============
 
     /**
+     * @notice Validate that a fightId is within the valid range for an event
+     * @param evt Event storage reference
+     * @param fightId Fight number to validate
+     */
+    function _validateFightId(Event storage evt, uint256 fightId) internal view {
+        require(fightId >= 1 && fightId <= evt.numFights, "fightId not in event");
+    }
+
+    /**
      * @notice Internal function to validate and store a fight result
      * @param eventId Event identifier
      * @param evt Event storage reference (must be validated before calling)
@@ -907,7 +914,7 @@ contract Booster is
         uint256 sumWinnersStakes,
         uint256 winningPoolTotalShares
     ) internal {
-        require(fightId >= 1 && fightId <= evt.numFights, "fightId not in event");
+        _validateFightId(evt, fightId);
 
         // Validate points parameters
         require(pointsForWinner > 0, "points for winner must be > 0");
@@ -970,6 +977,9 @@ contract Booster is
         address user,
         bool requirePayout
     ) internal returns (uint256 payout) {
+        Event storage evt = events[eventId];
+        _validateFightId(evt, fightId);
+
         Fight storage fight = fights[eventId][fightId];
         require(fight.status == FightStatus.RESOLVED, "not resolved");
 
