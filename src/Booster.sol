@@ -616,46 +616,16 @@ contract Booster is
 
         Event storage evt = events[eventId];
         require(fightId >= 1 && fightId <= evt.numFights, "fightId not in event");
-        // Require event to be claim ready before allowing claims
         require(evt.claimReady, "event not claim ready");
 
         uint256 deadline = evt.claimDeadline;
         require(deadline == 0 || block.timestamp <= deadline, "claim deadline passed");
 
-        Fight storage fight = fights[eventId][fightId];
-        require(fight.status == FightStatus.RESOLVED, "not resolved");
-
-        uint256 seasonId = evt.seasonId;
-        Boost[] storage fightBoosts = boosts[eventId][fightId];
-
-        // Handle cancelled fight (full refund of principal)
-        if (fight.cancelled) {
-            uint256 refund = _processCancelledBoostRefund(fightBoosts, boostIndices, msg.sender);
-
-            require(refund > 0, "nothing to refund");
-            FP.safeTransferFrom(address(this), msg.sender, seasonId, refund, "");
-            return;
-        }
-
-        // Normal claim flow (winning boosts)
-        // If no winners, no one can claim rewards (check early to avoid unnecessary computation)
-        require(fight.sumWinnersStakes > 0 && fight.winningPoolTotalShares > 0, "no winners");
-        // Ensure sumWinnersStakes doesn't exceed originalPool (winners are subset of all users)
-        require(fight.sumWinnersStakes <= fight.originalPool, "invalid winners stakes");
-        uint256 totalPayout = 0;
-
-        uint256 prizePool = fight.originalPool - fight.sumWinnersStakes + fight.bonusPool;
-
-        for (uint256 i = 0; i < boostIndices.length; i++) {
-            totalPayout += _processWinningBoostClaim(
-                eventId, fightId, fight, fightBoosts, boostIndices[i], msg.sender, prizePool
-            );
-        }
+        uint256 totalPayout = _processFightClaim(eventId, fightId, boostIndices, msg.sender, true);
 
         // Transfer total payout to user
-        if (totalPayout > 0) {
-            FP.safeTransferFrom(address(this), msg.sender, seasonId, totalPayout, "");
-        }
+        require(totalPayout > 0, "nothing to claim");
+        FP.safeTransferFrom(address(this), msg.sender, evt.seasonId, totalPayout, "");
     }
 
     /**
@@ -669,12 +639,10 @@ contract Booster is
 
         Event storage evt = events[eventId];
         require(inputs.length <= evt.numFights, "too many inputs");
-        // Require event to be claim ready before allowing claims
         require(evt.claimReady, "event not claim ready");
         uint256 deadline = evt.claimDeadline;
         require(deadline == 0 || block.timestamp <= deadline, "claim deadline passed");
 
-        uint256 seasonId = evt.seasonId;
         uint256 totalPayout = 0;
 
         for (uint256 j = 0; j < inputs.length; j++) {
@@ -682,39 +650,12 @@ contract Booster is
             require(input.fightId >= 1 && input.fightId <= evt.numFights, "fightId not in event");
             require(input.boostIndices.length > 0, "no boost indices");
 
-            Fight storage fight = fights[eventId][input.fightId];
-            require(fight.status == FightStatus.RESOLVED, "not resolved");
-
-            Boost[] storage fightBoosts = boosts[eventId][input.fightId];
-
-            // Handle cancelled fight (full refund of principal)
-            if (fight.cancelled) {
-                uint256 refund = _processCancelledBoostRefund(fightBoosts, input.boostIndices, msg.sender);
-
-                if (refund > 0) {
-                    totalPayout += refund;
-                }
-                continue;
-            }
-
-            // Normal claim flow (winning boosts)
-            // If no winners, skip this fight
-            if (fight.sumWinnersStakes == 0 || fight.winningPoolTotalShares == 0) {
-                continue;
-            }
-
-            uint256 prizePool = fight.originalPool - fight.sumWinnersStakes + fight.bonusPool;
-
-            for (uint256 i = 0; i < input.boostIndices.length; i++) {
-                totalPayout += _processWinningBoostClaim(
-                    eventId, input.fightId, fight, fightBoosts, input.boostIndices[i], msg.sender, prizePool
-                );
-            }
+            totalPayout += _processFightClaim(eventId, input.fightId, input.boostIndices, msg.sender, false);
         }
 
         // Transfer total payout to user
         require(totalPayout > 0, "nothing to claim");
-        FP.safeTransferFrom(address(this), msg.sender, seasonId, totalPayout, "");
+        FP.safeTransferFrom(address(this), msg.sender, evt.seasonId, totalPayout, "");
     }
 
     // ============ View Functions ============
@@ -1011,6 +952,61 @@ contract Booster is
             sumWinnersStakes,
             winningPoolTotalShares
         );
+    }
+
+    /**
+     * @notice Process claim for a single fight
+     * @param eventId Event identifier
+     * @param fightId Fight number
+     * @param boostIndices Array of boost indices to claim
+     * @param user Address claiming the reward
+     * @param requirePayout If true, require payout > 0 (for single fight claims). If false, return 0 if no payout (for batch claims)
+     * @return payout Total payout amount for this fight
+     */
+    function _processFightClaim(
+        string calldata eventId,
+        uint256 fightId,
+        uint256[] calldata boostIndices,
+        address user,
+        bool requirePayout
+    ) internal returns (uint256 payout) {
+        Fight storage fight = fights[eventId][fightId];
+        require(fight.status == FightStatus.RESOLVED, "not resolved");
+
+        Boost[] storage fightBoosts = boosts[eventId][fightId];
+
+        // Handle cancelled fight (full refund of principal)
+        if (fight.cancelled) {
+            payout = _processCancelledBoostRefund(fightBoosts, boostIndices, user);
+            if (requirePayout) {
+                require(payout > 0, "nothing to refund");
+            }
+            return payout;
+        }
+
+        // Normal claim flow (winning boosts)
+        // If no winners, handle based on requirePayout flag
+        if (fight.sumWinnersStakes == 0 || fight.winningPoolTotalShares == 0) {
+            if (requirePayout) {
+                revert("no winners");
+            }
+            return payout;
+        }
+
+        // Ensure sumWinnersStakes doesn't exceed originalPool (winners are subset of all users)
+        require(fight.sumWinnersStakes <= fight.originalPool, "invalid winners stakes");
+
+        for (uint256 i = 0; i < boostIndices.length; i++) {
+            payout += _processWinningBoostClaim(
+                eventId,
+                fightId,
+                fight,
+                fightBoosts,
+                boostIndices[i],
+                user,
+                fight.originalPool - fight.sumWinnersStakes + fight.bonusPool
+            );
+        }
     }
 
     /**
