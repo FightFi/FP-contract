@@ -14,22 +14,10 @@
 
  * 
  * @example Using testnet
- * ts-node tools/booster/set-event-boost-cutoff.ts --network testnet --eventId 322 --cutoff 1763247600
+ * ts-node tools/booster/set-event-boost-cutoff.ts --network testnet --eventId ufc-fight-night-nov-22-2025 --cutoff 1763823600
  * 
  * @example Using mainnet
- * ts-node tools/booster/set-event-boost-cutoff.ts --network mainnet --eventId 322 --cutoff 1763247600
- * 
- * @example Disable cutoff (set to 0, relies on status only)
- * ts-node tools/booster/set-event-boost-cutoff.ts --network testnet --eventId 322 --cutoff 0
- * 
- * @example Using alternative parameter names
- * ts-node tools/booster/set-event-boost-cutoff.ts --network testnet --event 322 --timestamp 1763247600
- * 
- * @example With custom contract address
- * ts-node tools/booster/set-event-boost-cutoff.ts --contract 0x123... --eventId 322 --cutoff 1763247600
- * 
- * @example Skip confirmation prompt
- * ts-node tools/booster/set-event-boost-cutoff.ts --network testnet --eventId 322 --cutoff 1763247600 --yes
+ * ts-node tools/booster/set-event-boost-cutoff.ts --network mainnet --eventId ufc-fight-night-nov-22-2025 --cutoff 1763823600
  * 
  * @env MAINNET_BSC_EXPLORER_URL - Block explorer URL for BSC Mainnet (default: https://bscscan.com)
  * @env TESTNET_BSC_EXPLORER_URL - Block explorer URL for BSC Testnet (default: https://testnet.bscscan.com)
