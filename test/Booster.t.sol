@@ -600,10 +600,10 @@ contract BoosterTest is Test {
         // Mark event as claim ready
         _setEventClaimReady(EVENT_1);
 
-        // Try to claim - should revert because no winners
+        // Try to claim - should revert because no winners, so nothing to claim
         uint256[] memory indices = booster.getUserBoostIndices(EVENT_1, FIGHT_1, user1);
         vm.prank(user1);
-        vm.expectRevert("no winners");
+        vm.expectRevert("nothing to claim");
         booster.claimReward(EVENT_1, FIGHT_1, indices);
     }
 
@@ -1504,6 +1504,9 @@ contract BoosterTest is Test {
         (,,,,,,,,,,, bool cancelled) = booster.getFight(EVENT_1, FIGHT_1);
         assertTrue(cancelled, "fight should be marked as cancelled");
 
+        // Mark event as claim ready (required even for refunds)
+        _setEventClaimReady(EVENT_1);
+
         // Users should be able to claim refunds
         uint256[] memory indices1 = booster.getUserBoostIndices(EVENT_1, FIGHT_1, user1);
         uint256[] memory indices2 = booster.getUserBoostIndices(EVENT_1, FIGHT_1, user2);
@@ -2385,6 +2388,9 @@ contract BoosterTest is Test {
         // STEP 1: Cancel the fight
         vm.prank(operator);
         booster.cancelFight(EVENT_1, FIGHT_1);
+
+        // Mark event as claim ready (required even for refunds)
+        _setEventClaimReady(EVENT_1);
 
         // STEP 2: Users claim refunds
         uint256[] memory user1Indices = booster.getUserBoostIndices(EVENT_1, FIGHT_1, user1);
