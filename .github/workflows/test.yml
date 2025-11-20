@@ -8,9 +8,6 @@ on:
   pull_request:
   workflow_dispatch:
 
-env:
-  FOUNDRY_PROFILE: ci
-
 jobs:
   check:
     name: Foundry project
@@ -26,6 +23,9 @@ jobs:
 
       - name: Show Forge version
         run: forge --version
+
+      - name: Show foundry.toml config
+        run: cat foundry.toml
 
       - name: Run Forge fmt
         run: forge fmt --check
