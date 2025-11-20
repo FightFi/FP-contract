@@ -96,13 +96,17 @@ contract FP1155 is
     }
 
     function setTransferAllowlist(address account, bool allowed) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        // Short-circuit if value already matches to avoid redundant storage writes and events
+        if (_allowlist[account] == allowed) return;
         _allowlist[account] = allowed;
         emit AllowlistUpdated(account, allowed);
     }
 
     function setSeasonStatus(uint256 seasonId, SeasonStatus status) external onlyRole(SEASON_ADMIN_ROLE) {
-        // Irreversible lock: cannot move from LOCKED to OPEN
         SeasonStatus current = _seasonStatus[seasonId];
+        // Short-circuit if value already matches to avoid redundant storage writes and events
+        if (current == status) return;
+        // Irreversible lock: cannot move from LOCKED to OPEN
         if (current == SeasonStatus.LOCKED) {
             require(status == SeasonStatus.LOCKED, "locked: irreversible");
         }
@@ -136,11 +140,11 @@ contract FP1155 is
         if (_seasonStatus[seasonId] != SeasonStatus.OPEN) {
             return false;
         }
-        // If destination has TRANSFER_AGENT_ROLE, only destination needs to be allowed
-        // Otherwise, both endpoints must be allowed
-        if (hasRole(TRANSFER_AGENT_ROLE, to)) {
-            return endpointAllowed(to);
+        // If either endpoint has TRANSFER_AGENT_ROLE, transfer is allowed
+        if (hasRole(TRANSFER_AGENT_ROLE, from) || hasRole(TRANSFER_AGENT_ROLE, to)) {
+            return true;
         }
+        // Otherwise, both endpoints must be allowed
         return endpointAllowed(from) && endpointAllowed(to);
     }
 

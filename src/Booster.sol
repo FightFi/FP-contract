@@ -105,6 +105,10 @@ contract Booster is
     // Minimum boost amount per boost (can be 0 to disable)
     uint256 public minBoostAmount;
 
+    // Maximum limits for operational safety
+    uint256 public maxFightsPerEvent;
+    uint256 public maxBonusDeposit;
+
     // eventId => Event
     mapping(string => Event) private events;
 
@@ -125,6 +129,8 @@ contract Booster is
     event FightBoostCutoffUpdated(string indexed eventId, uint256 indexed fightId, uint256 cutoff);
     event FightCancelled(string indexed eventId, uint256 indexed fightId);
     event MinBoostAmountUpdated(uint256 oldAmount, uint256 newAmount);
+    event MaxFightsPerEventUpdated(uint256 oldLimit, uint256 newLimit);
+    event MaxBonusDepositUpdated(uint256 oldLimit, uint256 newLimit);
     event BonusDeposited(string indexed eventId, uint256 indexed fightId, address indexed manager, uint256 amount);
     event BoostPlaced(
         string indexed eventId,
@@ -181,6 +187,8 @@ contract Booster is
 
         FP = FP1155(_fp);
         minBoostAmount = 0; // Default: no minimum
+        maxFightsPerEvent = 20; // Default: 20 fights per event
+        maxBonusDeposit = 0; // Default: no maximum (0 = unlimited)
         _grantRole(DEFAULT_ADMIN_ROLE, admin);
     }
 
@@ -194,6 +202,8 @@ contract Booster is
      * @param newMin New minimum boost amount in FP wei
      */
     function setMinBoostAmount(uint256 newMin) external onlyRole(OPERATOR_ROLE) {
+        // Short-circuit if value already matches to avoid redundant storage writes and events
+        if (minBoostAmount == newMin) return;
         uint256 oldMin = minBoostAmount;
         minBoostAmount = newMin;
         emit MinBoostAmountUpdated(oldMin, newMin);
@@ -213,6 +223,30 @@ contract Booster is
     }
 
     /**
+     * @notice Set maximum number of fights per event (0 to disable)
+     * @param newMax New maximum number of fights per event
+     */
+    function setMaxFightsPerEvent(uint256 newMax) external onlyRole(OPERATOR_ROLE) {
+        // Short-circuit if value already matches to avoid redundant storage writes and events
+        if (maxFightsPerEvent == newMax) return;
+        uint256 oldMax = maxFightsPerEvent;
+        maxFightsPerEvent = newMax;
+        emit MaxFightsPerEventUpdated(oldMax, newMax);
+    }
+
+    /**
+     * @notice Set maximum bonus deposit amount (0 to disable)
+     * @param newMax New maximum bonus deposit amount in FP tokens
+     */
+    function setMaxBonusDeposit(uint256 newMax) external onlyRole(OPERATOR_ROLE) {
+        // Short-circuit if value already matches to avoid redundant storage writes and events
+        if (maxBonusDeposit == newMax) return;
+        uint256 oldMax = maxBonusDeposit;
+        maxBonusDeposit = newMax;
+        emit MaxBonusDepositUpdated(oldMax, newMax);
+    }
+
+    /**
      * @notice Create a new event with multiple fights
      * @param eventId Unique identifier for the event (e.g., "UFC_300")
      * @param numFights Number of fights in the event (fights are 1, 2, 3, ..., numFights)
@@ -225,13 +259,13 @@ contract Booster is
     {
         require(!events[eventId].exists, "event exists");
         require(numFights > 0, "no fights");
+        require(maxFightsPerEvent == 0 || numFights <= maxFightsPerEvent, "numFights exceeds maximum");
 
         // Verify season is valid and open
         require(FP.seasonStatus(seasonId) == FP1155.SeasonStatus.OPEN, "season not open");
 
         // Create event
-        events[eventId] =
-            Event({ seasonId: seasonId, numFights: numFights, exists: true, claimDeadline: 0, claimReady: false });
+        events[eventId] = Event({ seasonId: seasonId, numFights: numFights, exists: true, claimDeadline: 0, claimReady: false });
 
         // Validate defaultBoostCutoff if provided
         if (defaultBoostCutoff > 0) {
@@ -288,6 +322,8 @@ contract Booster is
         Fight storage fight = fights[eventId][fightId];
         require(fight.status != FightStatus.RESOLVED, "fight resolved");
 
+        // Short-circuit if value already matches to avoid redundant storage writes and events
+        if (fight.boostCutoff == cutoff) return;
         fight.boostCutoff = cutoff;
         emit FightBoostCutoffUpdated(eventId, fightId, cutoff);
     }
@@ -306,8 +342,11 @@ contract Booster is
             Fight storage fight = fights[eventId][i];
             // Only set cutoff for fights that are not resolved
             if (fight.status != FightStatus.RESOLVED) {
-                fight.boostCutoff = cutoff;
-                emit FightBoostCutoffUpdated(eventId, i, cutoff);
+                // Only update and emit if value actually changed
+                if (fight.boostCutoff != cutoff) {
+                    fight.boostCutoff = cutoff;
+                    emit FightBoostCutoffUpdated(eventId, i, cutoff);
+                }
             }
         }
     }
@@ -337,6 +376,8 @@ contract Booster is
     function setEventClaimDeadline(string calldata eventId, uint256 deadline) external onlyRole(OPERATOR_ROLE) {
         require(events[eventId].exists, "event not exists");
         uint256 current = events[eventId].claimDeadline;
+        // Short-circuit if value already matches to avoid redundant storage writes and events
+        if (current == deadline) return;
         if (current != 0) {
             require(deadline == 0 || deadline >= current, "deadline decrease");
         }
@@ -390,7 +431,7 @@ contract Booster is
         }
 
         if (totalSweep > 0) {
-            FP.safeTransferFrom(address(this), recipient, evt.seasonId, totalSweep, "");
+            FP.agentTransferFrom(address(this), recipient, evt.seasonId, totalSweep, "");
         }
         emit EventPurged(eventId, recipient, totalSweep);
     }
@@ -410,6 +451,7 @@ contract Booster is
     {
         require(events[eventId].exists, "event not exists");
         require(amount > 0, "amount=0");
+        require(maxBonusDeposit == 0 || amount <= maxBonusDeposit, "bonus deposit exceeds maximum");
 
         Fight storage fight = fights[eventId][fightId];
         require(fight.status != FightStatus.RESOLVED, "fight resolved");
@@ -621,11 +663,11 @@ contract Booster is
         uint256 deadline = evt.claimDeadline;
         require(deadline == 0 || block.timestamp <= deadline, "claim deadline passed");
 
-        uint256 totalPayout = _processFightClaim(eventId, fightId, boostIndices, msg.sender, true);
+        uint256 totalPayout = _processFightClaim(eventId, fightId, boostIndices, msg.sender);
 
         // Transfer total payout to user
         require(totalPayout > 0, "nothing to claim");
-        FP.safeTransferFrom(address(this), msg.sender, evt.seasonId, totalPayout, "");
+        FP.agentTransferFrom(address(this), msg.sender, evt.seasonId, totalPayout, "");
     }
 
     /**
@@ -649,12 +691,12 @@ contract Booster is
             ClaimInput calldata input = inputs[j];
             require(input.boostIndices.length > 0, "no boost indices");
 
-            totalPayout += _processFightClaim(eventId, input.fightId, input.boostIndices, msg.sender, false);
+            totalPayout += _processFightClaim(eventId, input.fightId, input.boostIndices, msg.sender);
         }
 
         // Transfer total payout to user
         require(totalPayout > 0, "nothing to claim");
-        FP.safeTransferFrom(address(this), msg.sender, evt.seasonId, totalPayout, "");
+        FP.agentTransferFrom(address(this), msg.sender, evt.seasonId, totalPayout, "");
     }
 
     // ============ View Functions ============
@@ -921,7 +963,7 @@ contract Booster is
      */
     function _validateBoostCutoff(Fight storage fight) internal view {
         if (fight.boostCutoff > 0) {
-            require(block.timestamp < fight.boostCutoff, "boost cutoff passed");
+            require(block.timestamp <= fight.boostCutoff, "boost cutoff passed");
         }
     }
 
@@ -983,6 +1025,13 @@ contract Booster is
         fight.sumWinnersStakes = sumWinnersStakes;
         fight.winningPoolTotalShares = winningPoolTotalShares;
 
+        // Auto-set cancelled flag for no-contest outcomes to enable refunds
+        // This ensures consistent behavior whether cancelFight() or submitFightResult()
+        // is used to declare a no-contest
+        if (winner == Corner.NONE) {
+            fight.cancelled = true;
+        }
+
         emit FightResultSubmitted(
             eventId,
             fightId,
@@ -1001,15 +1050,13 @@ contract Booster is
      * @param fightId Fight number
      * @param boostIndices Array of boost indices to claim
      * @param user Address claiming the reward
-     * @param requirePayout If true, require payout > 0 (for single fight claims). If false, return 0 if no payout (for batch claims)
      * @return payout Total payout amount for this fight
      */
     function _processFightClaim(
         string calldata eventId,
         uint256 fightId,
         uint256[] calldata boostIndices,
-        address user,
-        bool requirePayout
+        address user
     ) internal returns (uint256 payout) {
         Event storage evt = events[eventId];
         _validateFightId(evt, fightId);
@@ -1022,24 +1069,21 @@ contract Booster is
         // Handle cancelled fight (full refund of principal)
         if (fight.cancelled) {
             payout = _processCancelledBoostRefund(fightBoosts, boostIndices, user);
-            if (requirePayout) {
-                require(payout > 0, "nothing to refund");
-            }
+            require(payout > 0, "nothing to refund");
+            fight.claimedAmount += payout;
             return payout;
         }
 
         // Normal claim flow (winning boosts)
-        // If no winners, handle based on requirePayout flag
+        // If no winners, return 0 (allows batch claims to skip fights with no winners)
         if (fight.sumWinnersStakes == 0 || fight.winningPoolTotalShares == 0) {
-            if (requirePayout) {
-                revert("no winners");
-            }
-            return payout;
+            return 0;
         }
 
         // Ensure sumWinnersStakes doesn't exceed originalPool (winners are subset of all users)
         require(fight.sumWinnersStakes <= fight.originalPool, "sumWinnersStakes exceeds originalPool");
 
+        uint256 prizePool = fight.originalPool - fight.sumWinnersStakes + fight.bonusPool;
         for (uint256 i = 0; i < boostIndices.length; i++) {
             payout += _processWinningBoostClaim(
                 eventId,
@@ -1048,9 +1092,10 @@ contract Booster is
                 fightBoosts,
                 boostIndices[i],
                 user,
-                fight.originalPool - fight.sumWinnersStakes + fight.bonusPool
+                prizePool
             );
         }
+        return payout;
     }
 
     /**
