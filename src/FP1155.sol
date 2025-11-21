@@ -1,19 +1,19 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
-import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
-import {ERC1155Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC1155/ERC1155Upgradeable.sol";
+import { Initializable } from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import { UUPSUpgradeable } from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import { ERC1155Upgradeable } from "@openzeppelin/contracts-upgradeable/token/ERC1155/ERC1155Upgradeable.sol";
 import {
     ERC1155PausableUpgradeable
 } from "@openzeppelin/contracts-upgradeable/token/ERC1155/extensions/ERC1155PausableUpgradeable.sol";
 import {
     ERC1155BurnableUpgradeable
 } from "@openzeppelin/contracts-upgradeable/token/ERC1155/extensions/ERC1155BurnableUpgradeable.sol";
-import {AccessControlUpgradeable} from "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
-import {EIP712Upgradeable} from "@openzeppelin/contracts-upgradeable/utils/cryptography/EIP712Upgradeable.sol";
-import {ReentrancyGuardUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
-import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
+import { AccessControlUpgradeable } from "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
+import { EIP712Upgradeable } from "@openzeppelin/contracts-upgradeable/utils/cryptography/EIP712Upgradeable.sol";
+import { ReentrancyGuardUpgradeable } from "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
+import { ECDSA } from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 
 /**
  * @title FP (Fighting Points) ERC-1155 on BSC
@@ -80,7 +80,7 @@ contract FP1155 is
     }
 
     /// @dev UUPS upgrade authorization: only DEFAULT_ADMIN_ROLE can upgrade
-    function _authorizeUpgrade(address newImplementation) internal override onlyRole(DEFAULT_ADMIN_ROLE) {}
+    function _authorizeUpgrade(address newImplementation) internal override onlyRole(DEFAULT_ADMIN_ROLE) { }
 
     // ============ Admin Ops ============
     function setURI(string memory newBaseURI) external onlyRole(DEFAULT_ADMIN_ROLE) {
@@ -96,13 +96,17 @@ contract FP1155 is
     }
 
     function setTransferAllowlist(address account, bool allowed) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        // Short-circuit if value already matches to avoid redundant storage writes and events
+        if (_allowlist[account] == allowed) return;
         _allowlist[account] = allowed;
         emit AllowlistUpdated(account, allowed);
     }
 
     function setSeasonStatus(uint256 seasonId, SeasonStatus status) external onlyRole(SEASON_ADMIN_ROLE) {
-        // Irreversible lock: cannot move from LOCKED to OPEN
         SeasonStatus current = _seasonStatus[seasonId];
+        // Short-circuit if value already matches to avoid redundant storage writes and events
+        if (current == status) return;
+        // Irreversible lock: cannot move from LOCKED to OPEN
         if (current == SeasonStatus.LOCKED) {
             require(status == SeasonStatus.LOCKED, "locked: irreversible");
         }
@@ -136,11 +140,11 @@ contract FP1155 is
         if (_seasonStatus[seasonId] != SeasonStatus.OPEN) {
             return false;
         }
-        // If destination has TRANSFER_AGENT_ROLE, only destination needs to be allowed
-        // Otherwise, both endpoints must be allowed
-        if (hasRole(TRANSFER_AGENT_ROLE, to)) {
-            return endpointAllowed(to);
+        // If either endpoint has TRANSFER_AGENT_ROLE, transfer is allowed
+        if (hasRole(TRANSFER_AGENT_ROLE, from) || hasRole(TRANSFER_AGENT_ROLE, to)) {
+            return true;
         }
+        // Otherwise, both endpoints must be allowed
         return endpointAllowed(from) && endpointAllowed(to);
     }
 

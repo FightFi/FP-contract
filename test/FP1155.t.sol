@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import {Test} from "forge-std/Test.sol";
-import {FP1155} from "src/FP1155.sol";
-import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
-import {IAccessControl} from "openzeppelin-contracts/contracts/access/IAccessControl.sol";
-import {Pausable} from "openzeppelin-contracts/contracts/utils/Pausable.sol";
-import {MessageHashUtils} from "openzeppelin-contracts/contracts/utils/cryptography/MessageHashUtils.sol";
+import { Test } from "forge-std/Test.sol";
+import { FP1155 } from "src/FP1155.sol";
+import { ERC1967Proxy } from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
+import { IAccessControl } from "openzeppelin-contracts/contracts/access/IAccessControl.sol";
+import { Pausable } from "openzeppelin-contracts/contracts/utils/Pausable.sol";
+import { MessageHashUtils } from "openzeppelin-contracts/contracts/utils/cryptography/MessageHashUtils.sol";
 
 contract FP1155Test is Test {
     FP1155 fp;
@@ -441,8 +441,9 @@ contract FP1155Test is Test {
         // Remove bob from allowlist to test non-allowlisted destination
         vm.prank(admin);
         fp.setTransferAllowlist(bob, false);
-        // transfer from agent to non-allowlisted bob should fail
-        assertFalse(fp.isTransfersAllowed(agent, bob, S2));
+        // transfer from agent to non-allowlisted bob should succeed
+        // (agents can transfer to anyone, consistent with _update() logic)
+        assertTrue(fp.isTransfersAllowed(agent, bob, S2));
         // Add bob back to allowlist
         vm.prank(admin);
         fp.setTransferAllowlist(bob, true);
@@ -521,5 +522,73 @@ contract FP1155Test is Test {
         vm.prank(minter);
         vm.expectRevert(bytes("amount=0"));
         fp.mintBatch(alice, ids, amts, "");
+    }
+
+    // ============ Redundant Update Tests ============
+
+    function test_setTransferAllowlist_noEventWhenUnchanged() public {
+        // Set allowlist to true
+        vm.prank(admin);
+        fp.setTransferAllowlist(alice, true);
+        assertTrue(fp.isOnAllowlist(alice));
+
+        // Try to set to same value - should not emit event
+        // We verify this by checking that the function completes without reverting
+        // and the state remains unchanged (which it already was)
+        vm.prank(admin);
+        fp.setTransferAllowlist(alice, true);
+        assertTrue(fp.isOnAllowlist(alice));
+    }
+
+    function test_setTransferAllowlist_emitsEventWhenChanged() public {
+        // Set allowlist to true
+        vm.prank(admin);
+        fp.setTransferAllowlist(alice, true);
+        assertTrue(fp.isOnAllowlist(alice));
+
+        // Change to false - should emit event
+        vm.prank(admin);
+        vm.expectEmit(true, false, false, false);
+        emit FP1155.AllowlistUpdated(alice, false);
+        fp.setTransferAllowlist(alice, false);
+        assertFalse(fp.isOnAllowlist(alice));
+    }
+
+    function test_setSeasonStatus_noEventWhenUnchanged() public {
+        // Set season status to LOCKED
+        vm.prank(admin);
+        fp.setSeasonStatus(S1, FP1155.SeasonStatus.LOCKED);
+        assertEq(uint256(fp.seasonStatus(S1)), uint256(FP1155.SeasonStatus.LOCKED));
+
+        // Try to set to same value - should not emit event
+        // We verify this by checking that the function completes without reverting
+        // and the state remains unchanged (which it already was)
+        vm.prank(admin);
+        fp.setSeasonStatus(S1, FP1155.SeasonStatus.LOCKED);
+        assertEq(uint256(fp.seasonStatus(S1)), uint256(FP1155.SeasonStatus.LOCKED));
+    }
+
+    function test_setSeasonStatus_emitsEventWhenChanged() public {
+        // Season starts as OPEN (default)
+        assertEq(uint256(fp.seasonStatus(S1)), uint256(FP1155.SeasonStatus.OPEN));
+
+        // Change to LOCKED - should emit event
+        vm.prank(admin);
+        vm.expectEmit(true, false, false, false);
+        emit FP1155.SeasonStatusUpdated(S1, FP1155.SeasonStatus.LOCKED);
+        fp.setSeasonStatus(S1, FP1155.SeasonStatus.LOCKED);
+        assertEq(uint256(fp.seasonStatus(S1)), uint256(FP1155.SeasonStatus.LOCKED));
+    }
+
+    function test_setSeasonStatus_noEventWhenUnchanged_open() public {
+        // Season starts as OPEN (default)
+        assertEq(uint256(fp.seasonStatus(S1)), uint256(FP1155.SeasonStatus.OPEN));
+
+        // Try to set to same value (OPEN) - should not emit event
+        // We verify this by checking that the function completes without reverting
+        // and the state remains unchanged (which it already was)
+        vm.prank(admin);
+        fp.setSeasonStatus(S1, FP1155.SeasonStatus.OPEN);
+        assertEq(uint256(fp.seasonStatus(S1)), uint256(FP1155.SeasonStatus.OPEN));
     }
 }

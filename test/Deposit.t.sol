@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import {Test} from "forge-std/Test.sol";
-import {FP1155} from "../src/FP1155.sol";
-import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
-import {Deposit} from "../src/Deposit.sol";
+import { Test } from "forge-std/Test.sol";
+import { FP1155 } from "../src/FP1155.sol";
+import { ERC1967Proxy } from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
+import { Deposit } from "../src/Deposit.sol";
 
 contract DepositTest is Test {
     FP1155 fp;
@@ -113,21 +113,19 @@ contract DepositTest is Test {
         deposit.withdraw(season2, 3);
     }
 
-    function test_NotAllowlistedUser_CanDepositButNotWithdraw() public {
+    function test_NotAllowlistedUser_CannotDeposit() public {
         // Remove user from allowlist
         fp.setTransferAllowlist(user, false);
 
-        // Deposit should succeed because destination (Deposit contract) has TRANSFER_AGENT_ROLE
+        // Deposit should revert because user is not allowlisted
+        // This prevents the asymmetric allowlist enforcement issue where
+        // non-allowlisted users could deposit but not withdraw
         vm.prank(user);
+        vm.expectRevert(bytes("deposit: user not allowed"));
         deposit.deposit(SEASON, 5);
-        assertEq(deposit.deposited(user, SEASON), 5);
-        assertEq(fp.balanceOf(user, SEASON), 95);
 
-        // With the new transfer logic, agents (Deposit contract) can transfer to anyone
-        // So withdraw now succeeds even for non-allowlisted users
-        vm.prank(user);
-        deposit.withdraw(SEASON, 2);
-        assertEq(deposit.deposited(user, SEASON), 3);
-        assertEq(fp.balanceOf(user, SEASON), 97);
+        // Verify user's balance is unchanged
+        assertEq(deposit.deposited(user, SEASON), 0);
+        assertEq(fp.balanceOf(user, SEASON), 100);
     }
 }

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
-import {FP1155} from "./FP1155.sol";
-import {ERC1155Holder} from "openzeppelin-contracts/contracts/token/ERC1155/utils/ERC1155Holder.sol";
+import { FP1155 } from "./FP1155.sol";
+import { ERC1155Holder } from "openzeppelin-contracts/contracts/token/ERC1155/utils/ERC1155Holder.sol";
 
 /**
  * @title Deposit (sample integration)
@@ -30,9 +30,12 @@ contract Deposit is ERC1155Holder {
      * @notice Deposit FP of the current season into this contract custody.
      * @dev Requires prior setApprovalForAll to this contract on FP1155.
      *      FP1155 must have season OPEN and endpoints allowed (user and this).
+     *      Enforces allowlist check to prevent non-allowlisted users from depositing
+     *      tokens they cannot withdraw.
      */
     function deposit(uint256 seasonId, uint256 amount) external {
         require(amount > 0, "amount=0");
+        require(FP.endpointAllowed(msg.sender), "deposit: user not allowed");
         // Agent pull without user approval; relies on TRANSFER_AGENT_ROLE granted to this contract
         FP.agentTransferFrom(msg.sender, address(this), seasonId, amount, "");
         deposited[msg.sender][seasonId] += amount;
