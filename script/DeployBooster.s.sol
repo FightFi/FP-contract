@@ -59,10 +59,16 @@ contract DeployBooster is Script {
         console2.log("Proxy:", address(booster));
         console2.log("");
         console2.log("Verify implementation:");
-        console2.log("  forge verify-contract", address(implementation), "src/Booster.sol:Booster --chain-id <CHAIN_ID>");
+        console2.log(
+            "  forge verify-contract", address(implementation), "src/Booster.sol:Booster --chain-id <CHAIN_ID>"
+        );
         console2.log("");
         console2.log("Verify proxy:");
         console2.log("  Encode init data: cast abi-encode \"initialize(address,address)\"", fpAddr, admin);
-        console2.log("  Then: forge verify-contract", address(booster), "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol:ERC1967Proxy --chain-id <CHAIN_ID> --constructor-args <ENCODED_ARGS>");
+        console2.log(
+            "  Then: forge verify-contract",
+            address(booster),
+            "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol:ERC1967Proxy --chain-id <CHAIN_ID> --constructor-args <ENCODED_ARGS>"
+        );
     }
 }
