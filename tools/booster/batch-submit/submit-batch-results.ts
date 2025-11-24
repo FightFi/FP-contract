@@ -23,7 +23,7 @@ const ABI = [
 // Network name to environment variable mapping
 const NETWORK_ENV_MAP: Record<string, string> = {
   testnet: "BSC_TESTNET_RPC_URL",
-  mainnet: "BSC_RPC_URL",
+  mainnet: "MAINNET_BSC_RPC_URL",
 };
 
 // Interface for fight result data
@@ -193,9 +193,23 @@ async function main() {
     provider
   );
 
-  const contract = args.contract || process.env.BOOSTER_ADDRESS;
-  if (!contract)
-    throw new Error("Missing contract (set --contract or BOOSTER_ADDRESS)");
+  const networkName = (args.network || args.net || "").toLowerCase();
+  const contract =
+    args.contract ||
+    (networkName === "testnet"
+      ? process.env.TESTNET_BOOSTER_ADDRESS || process.env.BOOSTER_ADDRESS
+      : networkName === "mainnet"
+      ? process.env.MAINNET_BOOSTER_ADDRESS || process.env.BOOSTER_ADDRESS
+      : process.env.BOOSTER_ADDRESS);
+  if (!contract) {
+    const envVar =
+      networkName === "testnet"
+        ? "TESTNET_BOOSTER_ADDRESS"
+        : networkName === "mainnet"
+        ? "MAINNET_BOOSTER_ADDRESS"
+        : "BOOSTER_ADDRESS";
+    throw new Error(`Missing contract (set --contract or ${envVar} in .env)`);
+  }
 
   const filePath = args.file;
   if (!filePath) {
