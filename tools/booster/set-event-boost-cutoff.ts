@@ -14,7 +14,7 @@
 
  * 
  * @example Using testnet
- * ts-node tools/booster/set-event-boost-cutoff.ts --network testnet --eventId ufc-fight-night-nov-22-2025 --cutoff 1763823600
+ * ts-node tools/booster/set-event-boost-cutoff.ts --network testnet --eventId ufc-323 --cutoff 1733521200
  * 
  * @example Using mainnet
  * ts-node tools/booster/set-event-boost-cutoff.ts --network mainnet --eventId ufc-fight-night-nov-22-2025 --cutoff 1763823600

@@ -18,7 +18,7 @@
  * ts-node tools/booster/create-event.ts --network testnet --eventId 322 --numFights 10 --seasonId 322 --yes
  *
  * @example With default boost cutoff
- * ts-node tools/booster/create-event.ts --network testnet --eventId 322 --numFights 10 --seasonId 322 --defaultBoostCutoff 1234567890
+ * ts-node tools/booster/create-event.ts --network mainnet --eventId ufc-323 --numFights 10 --seasonId 323 --defaultBoostCutoff 1765062000
  */
 import "dotenv/config";
 import { ethers } from "ethers";
@@ -54,13 +54,20 @@ async function main() {
 
   const booster = new ethers.Contract(config.contractAddress, ABI, config.wallet);
 
-  // Display transaction summary
-  displayTransactionSummary(config, [
+  // Build summary lines
+  const summaryLines = [
     `Event ID: ${eventId}`,
     `Number of fights: ${numFights}`,
     `Season ID: ${seasonId}`,
     `Default boost cutoff: ${defaultBoostCutoff}`,
-  ], "createEvent");
+  ];
+  if (defaultBoostCutoff > 0n) {
+    const cutoffDate = new Date(Number(defaultBoostCutoff) * 1000);
+    summaryLines.push(`Cutoff date: ${cutoffDate.toISOString()}`);
+  }
+
+  // Display transaction summary
+  displayTransactionSummary(config, summaryLines, "createEvent");
 
   // Request confirmation
   await requestConfirmation(args);
