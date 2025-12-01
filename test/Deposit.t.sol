@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import {Test} from "forge-std/Test.sol";
-import {FP1155} from "../src/FP1155.sol";
-import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
-import {Deposit} from "../src/Deposit.sol";
+import { Test } from "forge-std/Test.sol";
+import { FP1155 } from "../src/FP1155.sol";
+import { ERC1967Proxy } from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
+import { Deposit } from "../src/Deposit.sol";
 
 contract DepositTest is Test {
     FP1155 fp;
@@ -17,11 +17,7 @@ contract DepositTest is Test {
     function setUp() public {
         // Deploy FP1155 with this test as admin via proxy
         FP1155 implementation = new FP1155();
-        bytes memory initData = abi.encodeWithSelector(
-            FP1155.initialize.selector,
-            "ipfs://base/{id}.json",
-            admin
-        );
+        bytes memory initData = abi.encodeWithSelector(FP1155.initialize.selector, "ipfs://base/{id}.json", admin);
         ERC1967Proxy proxy = new ERC1967Proxy(address(implementation), initData);
         fp = FP1155(address(proxy));
 
@@ -117,24 +113,19 @@ contract DepositTest is Test {
         deposit.withdraw(season2, 3);
     }
 
-    function test_NotAllowlistedUser_RevertsOnDepositAndWithdraw() public {
+    function test_NotAllowlistedUser_CannotDeposit() public {
         // Remove user from allowlist
         fp.setTransferAllowlist(user, false);
 
-        // Deposit should revert (endpoints not allowed)
+        // Deposit should revert because user is not allowlisted
+        // This prevents the asymmetric allowlist enforcement issue where
+        // non-allowlisted users could deposit but not withdraw
         vm.prank(user);
-        vm.expectRevert(bytes("transfer: endpoints not allowed"));
+        vm.expectRevert(bytes("deposit: user not allowed"));
         deposit.deposit(SEASON, 5);
 
-        // Re-allowlist and deposit
-        fp.setTransferAllowlist(user, true);
-        vm.prank(user);
-        deposit.deposit(SEASON, 5);
-
-        // Remove allowlist again and attempt withdraw -> revert
-        fp.setTransferAllowlist(user, false);
-        vm.prank(user);
-        vm.expectRevert(bytes("transfer: endpoints not allowed"));
-        deposit.withdraw(SEASON, 2);
+        // Verify user's balance is unchanged
+        assertEq(deposit.deposited(user, SEASON), 0);
+        assertEq(fp.balanceOf(user, SEASON), 100);
     }
 }

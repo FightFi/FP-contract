@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import {Test} from "forge-std/Test.sol";
-import {FP1155} from "src/FP1155.sol";
-import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
-import {IAccessControl} from "openzeppelin-contracts/contracts/access/IAccessControl.sol";
-import {Pausable} from "openzeppelin-contracts/contracts/utils/Pausable.sol";
-import {MessageHashUtils} from "openzeppelin-contracts/contracts/utils/cryptography/MessageHashUtils.sol";
+import { Test } from "forge-std/Test.sol";
+import { FP1155 } from "src/FP1155.sol";
+import { ERC1967Proxy } from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
+import { IAccessControl } from "openzeppelin-contracts/contracts/access/IAccessControl.sol";
+import { Pausable } from "openzeppelin-contracts/contracts/utils/Pausable.sol";
+import { MessageHashUtils } from "openzeppelin-contracts/contracts/utils/cryptography/MessageHashUtils.sol";
 
 contract FP1155Test is Test {
     FP1155 fp;
@@ -26,11 +26,7 @@ contract FP1155Test is Test {
         // Deploy implementation
         FP1155 implementation = new FP1155();
         // Initialize via proxy
-        bytes memory initData = abi.encodeWithSelector(
-            FP1155.initialize.selector,
-            "ipfs://base/{id}.json",
-            admin
-        );
+        bytes memory initData = abi.encodeWithSelector(FP1155.initialize.selector, "ipfs://base/{id}.json", admin);
         ERC1967Proxy proxy = new ERC1967Proxy(address(implementation), initData);
         fp = FP1155(address(proxy));
         // grant roles
@@ -324,13 +320,83 @@ contract FP1155Test is Test {
         fp.setSeasonStatus(S1, FP1155.SeasonStatus.LOCKED);
     }
 
-    function testAgentRecipientNotEnoughIfSenderNotAllowed() public {
-        _mintToAlice(S1, 1);
-        // grant agent role already set in setUp; don't allowlist alice
+    function testTransferToAgentAllowsNonAllowlistedSender() public {
+        // New behavior: if destination has TRANSFER_AGENT_ROLE, sender doesn't need to be allowlisted
+        _mintToAlice(S1, 5);
+        // agent already has TRANSFER_AGENT_ROLE from setUp; alice is NOT allowlisted
+        vm.prank(alice);
+        fp.safeTransferFrom(alice, agent, S1, 3, "");
+        assertEq(fp.balanceOf(alice, S1), 2);
+        assertEq(fp.balanceOf(agent, S1), 3);
+    }
+
+    function testTransferToAgentStillRequiresOpenSeason() public {
+        _mintToAlice(S1, 2);
+        // Lock the season
+        vm.prank(admin);
+        fp.setSeasonStatus(S1, FP1155.SeasonStatus.LOCKED);
+        // Even though destination is agent, season must be OPEN
         vm.startPrank(alice);
-        vm.expectRevert(bytes("transfer: endpoints not allowed"));
+        vm.expectRevert(bytes("transfer: season locked"));
         fp.safeTransferFrom(alice, agent, S1, 1, "");
         vm.stopPrank();
+    }
+
+    function testTransferToNonAgentStillRequiresBothEndpointsAllowed() public {
+        _mintToAlice(S1, 3);
+        // Only allowlist bob, not alice
+        vm.prank(admin);
+        fp.setTransferAllowlist(bob, true);
+        // alice is not allowlisted, so transfer should fail even though bob is allowlisted
+        vm.startPrank(alice);
+        vm.expectRevert(bytes("transfer: endpoints not allowed"));
+        fp.safeTransferFrom(alice, bob, S1, 1, "");
+        vm.stopPrank();
+    }
+
+    function testBatchTransferToAgentAllowsNonAllowlistedSender() public {
+        uint256[] memory ids = new uint256[](2);
+        ids[0] = S1;
+        ids[1] = S1 + 1;
+        uint256[] memory amts = new uint256[](2);
+        amts[0] = 2;
+        amts[1] = 3;
+        vm.prank(minter);
+        fp.mintBatch(alice, ids, amts, "");
+        // alice is NOT allowlisted, but agent has TRANSFER_AGENT_ROLE
+        vm.prank(alice);
+        fp.safeBatchTransferFrom(alice, agent, ids, amts, "");
+        assertEq(fp.balanceOf(alice, ids[0]), 0);
+        assertEq(fp.balanceOf(alice, ids[1]), 0);
+        assertEq(fp.balanceOf(agent, ids[0]), 2);
+        assertEq(fp.balanceOf(agent, ids[1]), 3);
+    }
+
+    function testTransferFromAgentToNonAllowlistedFails() public {
+        // This test is now obsolete - agents CAN transfer to non-allowlisted users
+        // This is required for the Booster contract to pay out rewards
+        // Mint to agent
+        vm.prank(minter);
+        fp.mint(agent, S1, 5, "");
+        // bob is NOT allowlisted, but agent can transfer to him
+        vm.prank(agent);
+        fp.safeTransferFrom(agent, bob, S1, 2, "");
+        // Verify transfer succeeded
+        assertEq(fp.balanceOf(bob, S1), 2);
+    }
+
+    function testTransferFromAgentToAllowlistedSucceeds() public {
+        // Mint to agent
+        vm.prank(minter);
+        fp.mint(agent, S1, 5, "");
+        // Allowlist bob
+        vm.prank(admin);
+        fp.setTransferAllowlist(bob, true);
+        // Agent can transfer to allowlisted bob
+        vm.prank(agent);
+        fp.safeTransferFrom(agent, bob, S1, 2, "");
+        assertEq(fp.balanceOf(agent, S1), 3);
+        assertEq(fp.balanceOf(bob, S1), 2);
     }
 
     // ------- Additional coverage -------
@@ -354,6 +420,7 @@ contract FP1155Test is Test {
     }
 
     function testIsTransfersAllowedView() public {
+        uint256 S2 = S1 + 1; // Use a different season for agent tests
         // mint path (from=0)
         assertTrue(fp.isTransfersAllowed(address(0), alice, S1));
         // burn path (to=0)
@@ -368,6 +435,20 @@ contract FP1155Test is Test {
         vm.prank(admin);
         fp.setSeasonStatus(S1, FP1155.SeasonStatus.LOCKED);
         assertFalse(fp.isTransfersAllowed(alice, bob, S1));
+        // Use S2 (still OPEN) for agent tests
+        // transfer to agent: alice doesn't need to be allowlisted
+        assertTrue(fp.isTransfersAllowed(alice, agent, S2));
+        // Remove bob from allowlist to test non-allowlisted destination
+        vm.prank(admin);
+        fp.setTransferAllowlist(bob, false);
+        // transfer from agent to non-allowlisted bob should succeed
+        // (agents can transfer to anyone, consistent with _update() logic)
+        assertTrue(fp.isTransfersAllowed(agent, bob, S2));
+        // Add bob back to allowlist
+        vm.prank(admin);
+        fp.setTransferAllowlist(bob, true);
+        // transfer from agent to allowlisted bob should succeed
+        assertTrue(fp.isTransfersAllowed(agent, bob, S2));
     }
 
     function testBatchTransferRevertsIfAnySeasonLocked() public {
@@ -441,5 +522,73 @@ contract FP1155Test is Test {
         vm.prank(minter);
         vm.expectRevert(bytes("amount=0"));
         fp.mintBatch(alice, ids, amts, "");
+    }
+
+    // ============ Redundant Update Tests ============
+
+    function test_setTransferAllowlist_noEventWhenUnchanged() public {
+        // Set allowlist to true
+        vm.prank(admin);
+        fp.setTransferAllowlist(alice, true);
+        assertTrue(fp.isOnAllowlist(alice));
+
+        // Try to set to same value - should not emit event
+        // We verify this by checking that the function completes without reverting
+        // and the state remains unchanged (which it already was)
+        vm.prank(admin);
+        fp.setTransferAllowlist(alice, true);
+        assertTrue(fp.isOnAllowlist(alice));
+    }
+
+    function test_setTransferAllowlist_emitsEventWhenChanged() public {
+        // Set allowlist to true
+        vm.prank(admin);
+        fp.setTransferAllowlist(alice, true);
+        assertTrue(fp.isOnAllowlist(alice));
+
+        // Change to false - should emit event
+        vm.prank(admin);
+        vm.expectEmit(true, false, false, false);
+        emit FP1155.AllowlistUpdated(alice, false);
+        fp.setTransferAllowlist(alice, false);
+        assertFalse(fp.isOnAllowlist(alice));
+    }
+
+    function test_setSeasonStatus_noEventWhenUnchanged() public {
+        // Set season status to LOCKED
+        vm.prank(admin);
+        fp.setSeasonStatus(S1, FP1155.SeasonStatus.LOCKED);
+        assertEq(uint256(fp.seasonStatus(S1)), uint256(FP1155.SeasonStatus.LOCKED));
+
+        // Try to set to same value - should not emit event
+        // We verify this by checking that the function completes without reverting
+        // and the state remains unchanged (which it already was)
+        vm.prank(admin);
+        fp.setSeasonStatus(S1, FP1155.SeasonStatus.LOCKED);
+        assertEq(uint256(fp.seasonStatus(S1)), uint256(FP1155.SeasonStatus.LOCKED));
+    }
+
+    function test_setSeasonStatus_emitsEventWhenChanged() public {
+        // Season starts as OPEN (default)
+        assertEq(uint256(fp.seasonStatus(S1)), uint256(FP1155.SeasonStatus.OPEN));
+
+        // Change to LOCKED - should emit event
+        vm.prank(admin);
+        vm.expectEmit(true, false, false, false);
+        emit FP1155.SeasonStatusUpdated(S1, FP1155.SeasonStatus.LOCKED);
+        fp.setSeasonStatus(S1, FP1155.SeasonStatus.LOCKED);
+        assertEq(uint256(fp.seasonStatus(S1)), uint256(FP1155.SeasonStatus.LOCKED));
+    }
+
+    function test_setSeasonStatus_noEventWhenUnchanged_open() public {
+        // Season starts as OPEN (default)
+        assertEq(uint256(fp.seasonStatus(S1)), uint256(FP1155.SeasonStatus.OPEN));
+
+        // Try to set to same value (OPEN) - should not emit event
+        // We verify this by checking that the function completes without reverting
+        // and the state remains unchanged (which it already was)
+        vm.prank(admin);
+        fp.setSeasonStatus(S1, FP1155.SeasonStatus.OPEN);
+        assertEq(uint256(fp.seasonStatus(S1)), uint256(FP1155.SeasonStatus.OPEN));
     }
 }

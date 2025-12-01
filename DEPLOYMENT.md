@@ -1,3 +1,24 @@
+# FP1155 and Booster — Quick Reference
+
+Use these addresses in apps and scripts. Always interact with the FP1155 proxy (not the implementation).
+
+## Production (BSC Mainnet – chainId 56)
+- FP1155 (UUPS proxy): `0xD0B591751E6aa314192810471461bDE963796306`
+- FP1155 implementation (current, for verification only): `0x350A9Ba50eED55Ac5AfD9f7d218263Cd40d11339`
+- Booster (UUPS proxy): `0x6A5CA58d449773A6Bb4c1eccf0f509FfB292D89B`
+- Booster implementation (current): `0x75045858325097dC267EB2cbF17E12b5027dEDe7`
+- Base metadata URI: `https://assets.fight.foundation/fp/{id}.json`
+
+## Testnet (BSC Testnet – chainId 97)
+- FP1155 (UUPS proxy): `0x5E845Db62fDF02451cfC98be1e9927eB48a42fce`
+- FP1155 implementation (logic): `0xFf2c7902FF6388553D1125Ca26545e30eaA1A4e6`
+- Booster: `0x09107f150E478f7D81b35870e8c73c9Fb01Eda6B`
+- Base metadata URI: `https://assets.fight.foundation/fp/{id}.json`
+
+Notes:
+- FP1155 is upgradeable via UUPS; storage/data lives in the proxy, so upgrades preserve balances and settings.
+- ERC-1155 token URI resolves with {id} as 64-char lowercase hex (no 0x).
+
 # FP1155 Deployment Summary
 ## Mainnet Proxy Address
 
@@ -7,6 +28,42 @@
 **Admin/Season Admin:** 0xac5d932D7a16D74F713309be227659d387c69429
 **CLAIM_SIGNER_ROLE:** 0x02D525601e60c2448Abb084e4020926A2Ae5cB01
 **MINTER_ROLE:** 0xBf797273B60545882711f003094C065351a9CD7B
+**Base URI Update (Mainnet):** set via `setURI("https://assets.fight.foundation/fp/{id}.json")`
+  - Tx: `0x2639b6a9789819550e6f242dce30f45dd476508049ee71e3651a3fb8e220cfa1`
+**Upgrade (Mainnet):** UUPS upgrade executed, proxy unchanged
+  - Implementation history:
+    - v1: `0xD9fda390Fa212324F26276F14D6954076948C8d1`
+    - v2: `0xFC2a83E854C1D975284e4A13c0837A1b26e09221`
+    - v3: `0x8A17E1D1835472CE9325EC2F8F37C34451Ab0BA6`
+    - v4 (current): `0x350A9Ba50eED55Ac5AfD9f7d218263Cd40d11339` ⭐
+  - v3 Deploy tx: `0x6d6d24cc19d967ff63b3864efa0ba572f84c10bf403c440a11fc2f9492905ee9`
+  - v3 Upgrade tx: `0x2cf591112925f2d0ceb5c642092b1923776df3239db2f6230147a126752290fa`
+  - v3 Verified: https://bscscan.com/address/0x8A17E1D1835472CE9325EC2F8F37C34451Ab0BA6#code
+  - v3 Changes: Fix transfer logic to allow agents to transfer to any address (enables Booster payouts)
+  - v4 Deploy tx: `0xbea74f50ab0adaad7caa25bfa2403d8ce3973cbf4207eeab4f02df60a74a592a`
+  - v4 Upgrade tx: `0xead2e001392b9b0aafef31ccc0a38ea622a7042ce5ecd515ad71be1fdd2a39e9`
+  - v4 Verified: https://bscscan.com/address/0x350a9ba50eed55ac5afd9f7d218263cd40d11339#code
+  - v4 Changes: Gas optimizations (short-circuit checks), import formatting, enhanced transfer logic for both directions
+  - Note: State is preserved across upgrades (storage remains in proxy)
+#### Allowlist updates (Mainnet FP1155 proxy)
+- Removed from transfer allowlist → `0xf362fe668d93c43be16716a73702333795fbcea6`
+  - Tx: `0x5b6cc71d7f2a62c141f48b0d11c5f850fb146eded1a06ebefaf06daaf653e372`
+- Removed from transfer allowlist → `0x91341dbc9f531fedcf790b7cae85f997a8e1e9d4`
+  - Tx: `0xf5a82ff82d8863e5d322920bd289d270dd2564350980e164cddb44861ec07eff`
+- Added to transfer allowlist → `0xD0B591751E6aa314192810471461bDE963796306` (FP1155 itself)
+  - Tx: `0x38a7a486250673cc374191e4e4cdcc96a63277f4d20089ae5a8e64e391718de5`
+- Added to transfer allowlist → `0x5E845Db62fDF02451cfC98be1e9927eB48a42fce` (Old Booster - deprecated)
+  - Tx: `0xb3411e2827eeec2c1c314f4d3c78f2e3a04307153ae1e4edfe2bc0bb37c2e042`
+- Added to transfer allowlist → `0x6A5CA58d449773A6Bb4c1eccf0f509FfB292D89B` (New Booster UUPS - Nov 21, 2025)
+  - Tx: `0xcf211fbb584448e82034686e3e090e7f3d6da865e3cf77ad999a4a9af1505ab2`
+- Added to transfer allowlist → `0x3fDDF486b3f539F24aBD845674F18AE33Af668f8` (Team Operator - Nov 21, 2025)
+  - Tx: `0x60196b7aaa712f5cf18505f4397601dd4b8c5c76aaf82b796d414809acb21e07`
+
+#### Role grants (Mainnet FP1155 proxy)
+- Granted TRANSFER_AGENT_ROLE → `0x5E845Db62fDF02451cfC98be1e9927eB48a42fce` (Old Booster - deprecated)
+  - Tx: `0x56a40364be074dba220a225dff80a311fcaa992d5bd341ef76ecfed4f013d0f1`
+- Granted TRANSFER_AGENT_ROLE → `0x6A5CA58d449773A6Bb4c1eccf0f509FfB292D89B` (New Booster UUPS - Nov 21, 2025)
+  - Tx: `0x47ea9337e9ac0c95842b503b32192df646824fc8119951a87bc0ee1983eed53a`
 ## ⚠️ Important: Upgradeable Contract
 
 **FP1155 is now upgradeable using the UUPS (Universal Upgradeable Proxy Standard) pattern.**
@@ -30,18 +87,90 @@ Both mainnet and testnet had non-upgradeable deployments:
 - **Status:** ✅ Verified
 - **Deployment Date:** November 5, 2025
 
-### BSC Testnet (Chain 97)
-- Previous testnet deploy (superseded): `0x5Fa58c84606Eba7000eCaF24C918086B094Db39a` (admin mistakenly set to `0x1804...`).
-
-#### Fresh Testnet Deployment (Active)
-- **Contract Address:** `0xD0B591751E6aa314192810471461bDE963796306`
+#### Booster (Mainnet) - DEPRECATED (Non-Upgradeable)
+**⚠️ NOTE: This is the old non-upgradeable Booster. Use the new UUPS version below.**
+- **Booster Address:** `0x5E845Db62fDF02451cfC98be1e9927eB48a42fce`
 - **Deployer/Admin:** `0xBf797273B60545882711f003094C065351a9CD7B`
-- **Deploy Transaction:** `0x998beae5e01058145832978d6f6311ca81f13ed7edb4aa1f8e5bf42249a020b5`
-- **Block:** 71491008
-- **Explorer:** https://testnet.bscscan.com/address/0xD0B591751E6aa314192810471461bDE963796306
-- **Status:** ⏳ Verification in progress
-- **Gas Used:** 4,509,644 (~0.0004509644 BNB @ 0.1 gwei)
-- **Deployment Date:** November 6, 2025
+- **FP1155 (proxy):** `0xD0B591751E6aa314192810471461bDE963796306`
+- **Transactions:**
+  - Deploy Booster (CREATE): `0x3f03aae3ec84f9bfaab0ae374f4741bcefa26d33b87639d5489840ea259bb481`
+  - FP1155 grant TRANSFER_AGENT_ROLE → Booster: `0xf8fa5df63584ce0220797fa1d9e124776d76af885108732005d1ee57fa6e9b27`
+  - FP1155 allowlist Booster: `0xbc027d5f78aad7d21b15106a9e56d9ed9a71aa48ca8ed0cc07efb186c20cf84d`
+  - FP1155 allowlist Admin: `0xe415bb8b1199d6a793c401e2442b48b5c220e8546bd6c323ba49cc359cb521f5`
+  - Booster grant OPERATOR_ROLE → Admin: `0x1d0852200ebd46875312941b1d3289b1d38a3503027d2269fd93a0ef90581afc`
+  - Booster grant OPERATOR_ROLE → 0x3fDDF486b3f539F24aBD845674F18AE33Af668f8: `0x752bd9feca2face897389d48c9521720c9ee53a48c82ba20dde392693ef603e0`
+  - FP1155 allowlist 0x3fDDF486b3f539F24aBD845674F18AE33Af668f8: `0x2a7a457a8effb8527861482feb5ef887fcf7883c351b93ea5d55dfc700cb67b1`
+- **Verification:**
+  - Verified: https://bscscan.com/address/0x5E845Db62fDF02451cfC98be1e9927eB48a42fce#code
+
+#### Booster (Mainnet) - CURRENT (UUPS Upgradeable) ⭐
+**Deployment Date:** November 21, 2025
+- **Booster Proxy (use this):** `0x6A5CA58d449773A6Bb4c1eccf0f509FfB292D89B`
+- **Booster Implementation:** `0x75045858325097dC267EB2cbF17E12b5027dEDe7`
+- **Admin:** `0xBf797273B60545882711f003094C065351a9CD7B`
+- **FP1155 (proxy):** `0xD0B591751E6aa314192810471461bDE963796306`
+- **Configuration:**
+  - Min Boost Amount: 0 (no minimum)
+  - Max Fights Per Event: 20
+  - Max Bonus Deposit: 0 (unlimited)
+- **Transactions:**
+  - Deploy Implementation: `0xc1bf32569d0239e8ab20078b0b38b97081e975be4b9863ef3ec73ffed53391b7`
+  - Deploy Proxy: `0xcd28d014e6774b1585205986933da806834ce95f90bda7035ba04013733ac490`
+  - FP1155 grant TRANSFER_AGENT_ROLE → Booster: `0x47ea9337e9ac0c95842b503b32192df646824fc8119951a87bc0ee1983eed53a`
+  - FP1155 allowlist Booster: `0xcf211fbb584448e82034686e3e090e7f3d6da865e3cf77ad999a4a9af1505ab2`
+  - Booster grant OPERATOR_ROLE → Admin: `0x7282de8df94dcd2f8a8d3e181dd8aff61c90a865ba123f17ef813310bb72bf0d`
+  - Booster grant OPERATOR_ROLE → 0x3fDDF486b3f539F24aBD845674F18AE33Af668f8: `0xb94121dbb545dead21688be5e9c4c57c606045c262c44334f5f5cfa5f4646ae9`
+  - FP1155 allowlist 0x3fDDF486b3f539F24aBD845674F18AE33Af668f8: `0x60196b7aaa712f5cf18505f4397601dd4b8c5c76aaf82b796d414809acb21e07`
+- **Verification:**
+  - Implementation verified: https://bscscan.com/address/0x75045858325097dc267eb2cbf17e12b5027dede7#code
+  - Proxy: https://bscscan.com/address/0x6a5ca58d449773a6bb4c1eccf0f509ffb292d89b#code
+- **Features:**
+  - ✅ UUPS Upgradeable pattern
+  - ✅ Claim approval flow with `claimReady` flag
+  - ✅ Batch operations (submitFightResults, claimRewards)
+  - ✅ Safety limits (maxFightsPerEvent, maxBonusDeposit)
+  - ✅ Force deposit for result corrections
+  - ✅ Gas optimizations with short-circuit checks
+
+### BSC Testnet (Chain 97)
+
+- Previous testnet deploy (legacy, superseded): `0x5Fa58c84606Eba7000eCaF24C918086B094Db39a` (admin mistakenly set to `0x1804...`).
+
+#### Redeploy (UUPS Proxy) — Active
+- Date: November 13, 2025
+- Base URI: `https://assets.fight.foundation/fp/{id}.json`
+- Admin: `0xBf797273B60545882711f003094C065351a9CD7B`
+- Implementation (logic): `0xFf2c7902FF6388553D1125Ca26545e30eaA1A4e6`
+  - Tx: `0x9b8b4880ddce58d74774b30852d4889aa7af0407185a8345b31f3e0c4d317df7`
+  - Verified: https://testnet.bscscan.com/address/0xff2c7902ff6388553d1125ca26545e30eaa1a4e6#code
+- Proxy (use this for all interactions): `0x5E845Db62fDF02451cfC98be1e9927eB48a42fce`
+  - Tx: `0xfe5db62aabff22d500a0c4b4a676bb46c2f190b869ce5e4b3b867dfba602c009`
+  - Verified (ERC1967Proxy): https://testnet.bscscan.com/address/0x5e845db62fdf02451cfc98be1e9927eb48a42fce#code
+
+Notes:
+- The prior non-proxy testnet address is deprecated and not upgradeable.
+- Always point apps and scripts to the proxy address above.
+
+#### Booster (Testnet) — Using new FP1155 proxy
+- Booster Address: `0x09107f150E478f7D81b35870e8c73c9Fb01Eda6B`
+- Deployer/Admin: `0xBf797273B60545882711f003094C065351a9CD7B`
+- FP1155 (proxy): `0x5E845Db62fDF02451cfC98be1e9927eB48a42fce`
+- Transactions:
+  - Deploy Booster (CREATE): `0x126787596abaa8c592b1256e0cefb1b5661638ebcb73bffd215680b4d55adc89`
+  - FP1155 grant TRANSFER_AGENT_ROLE → Booster: `0xc48bd3e6680d143bb3b3bfe3d4f63b177094de9bc252eddfbc242cf9dca47bd5`
+  - FP1155 allowlist Booster: `0xebf7c5dc8122f4dc11dd2cd68c988bbfb2d326c8c6d07f3c8bee4b519f3da8e3`
+  - FP1155 allowlist Operator: `0xec68af926a1c8001f5a30cedc4a7d53b0e149a336474721a6eae2dafe13a4c62`
+  - Booster grant OPERATOR_ROLE → 0x3fDDF486b3f539F24aBD845674F18AE33Af668f8: `0xfdc551d71255214373c95041b760845d933886c3287124ec4856dde708f2a257`
+- Verification:
+  - Verified: https://testnet.bscscan.com/address/0x09107f150e478f7d81b35870e8c73c9fb01eda6b#code
+
+#### Role grants (Testnet FP1155 proxy)
+- CLAIM_SIGNER_ROLE → 0x3fDDF486b3f539F24aBD845674F18AE33Af668f8
+  - Tx: `0x4be4756d6c68f853f8dc4124b4015dc83676e67230a10ca422cad33414ea4348`
+
+#### Allowlist updates (Testnet FP1155 proxy)
+- Added to transfer allowlist → `0x91341dbc9f531fedcf790b7cae85f997a8e1e9d4`
+  - Tx: `0x2342b914e8ba3a19c8cf472fff48656b0899c188d7d399fe4c4014153c6bfe96`
 
 ## Constructor Parameters
 
@@ -211,7 +340,7 @@ cast send 0x5Fa58c84606Eba7000eCaF24C918086B094Db39a \
 
 Update your `.env` file with the deployed contract address:
 ```bash
-FP1155_ADDRESS=0xD0B591751E6aa314192810471461bDE963796306
+FP1155_ADDRESS=0x5E845Db62fDF02451cfC98be1e9927eB48a42fce
 ```
 
 ## Testing the Deployment
@@ -422,9 +551,39 @@ Aggregate over all fights if you need a total prior to `claimReward(eventId)`.
 
 ```bash
 FP1155_ADDRESS=0xD0B591751E6aa314192810471461bDE963796306
-BOOSTER_ADDRESS=0x...  # Update after deployment
-OPERATOR_ADDRESS=0x...
+BOOSTER_ADDRESS=0x3153767cCBc04B7f3E65a422494eE40f6D70F525
+OPERATOR_ADDRESS=0xBf797273B60545882711f003094C065351a9CD7B  # current admin as operator on testnet
 ```
+
+### Testnet deployment (Nov 12, 2025)
+
+- Network: BSC Testnet (97)
+- Booster address: `0x3153767cCBc04B7f3E65a422494eE40f6D70F525`
+- Admin: `0xBf797273B60545882711f003094C065351a9CD7B`
+- FP1155 (proxy): `0xD0B591751E6aa314192810471461bDE963796306`
+
+Transactions:
+- Deploy Booster (CREATE)
+  - Tx: `0xe722ef8f590031f66219e5c9e07fcb497722c42993a67c78b09248e868465edd`
+- Grant TRANSFER_AGENT_ROLE to Booster on FP1155
+  - Tx: `0x6604cc1080515f6ec6a5cf4c91ee516f90d9df5e8fb4feaa65e0152349a83bd7`
+- Allowlist Booster in FP1155
+  - Tx: `0x2574ae1919a30eaa385d149972d77de63f270dd01e20cfee206b106f8f69f3a0`
+- Allowlist Admin in FP1155
+  - Tx: `0x6866dc8bba2983aff06c88b912e65befab6ec6b46def1ef56e7f33993c15c494`
+- Grant OPERATOR_ROLE to Admin on Booster
+  - Tx: `0x3e9503f215ba30fed1a71b1866eb0a9ad2d3643517bbea1305accfce5bc69d65`
+ - Booster grant OPERATOR_ROLE → 0x3fDDF486b3f539F24aBD845674F18AE33Af668f8
+   - Tx: `0x0f5a7696875895b3e9d2cd44815c64b76e3301b2dc293c33274ebc60ce2861b0`
+ - FP1155 allowlist 0x3fDDF486b3f539F24aBD845674F18AE33Af668f8
+   - Tx: `0x683523216c4d15b720af9a48990a5a248cbe368696bb9ad1a2c63cf91133c22c`
+
+Verification:
+- Booster verified on BscScan Testnet: https://testnet.bscscan.com/address/0x3153767cCBc04B7f3E65a422494eE40f6D70F525#code
+
+Pending follow-ups:
+- Grant OPERATOR_ROLE on Booster to the production operator address (awaiting confirmation of the exact address format)
+- Optionally remove operator allowlist for admin if not required
 
 ---
 

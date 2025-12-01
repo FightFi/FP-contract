@@ -17,6 +17,8 @@
  * @example Skip confirmation prompt
  * ts-node tools/booster/create-event.ts --network testnet --eventId 322 --numFights 10 --seasonId 322 --yes
  *
+ * @example With default boost cutoff
+ * ts-node tools/booster/create-event.ts --network testnet --eventId 322 --numFights 10 --seasonId 322 --defaultBoostCutoff 1234567890
  */
 import "dotenv/config";
 import { ethers } from "ethers";
@@ -29,7 +31,7 @@ import {
 } from "./booster.utils";
 
 const ABI = [
-  "function createEvent(string calldata eventId, uint256 numFights, uint256 seasonId) external",
+  "function createEvent(string calldata eventId, uint256 numFights, uint256 seasonId, uint256 defaultBoostCutoff) external",
 ];
 
 async function main() {
@@ -48,6 +50,8 @@ async function main() {
   const seasonId = BigInt(args.seasonId ?? args.season ?? 0);
   if (seasonId <= 0n) throw new Error("--seasonId (or --season) must be > 0");
 
+  const defaultBoostCutoff = BigInt(args.defaultBoostCutoff ?? args.cutoff ?? 0);
+
   const booster = new ethers.Contract(config.contractAddress, ABI, config.wallet);
 
   // Display transaction summary
@@ -55,13 +59,14 @@ async function main() {
     `Event ID: ${eventId}`,
     `Number of fights: ${numFights}`,
     `Season ID: ${seasonId}`,
+    `Default boost cutoff: ${defaultBoostCutoff}`,
   ], "createEvent");
 
   // Request confirmation
   await requestConfirmation(args);
 
   console.log("\n🚀 Executing transaction...");
-  const tx = await booster.createEvent(eventId, numFights, seasonId);
+  const tx = await booster.createEvent(eventId, numFights, seasonId, defaultBoostCutoff);
   await waitForTransaction(tx, config.chainId);
 }
 

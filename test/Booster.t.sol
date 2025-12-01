@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import {Test, console2} from "forge-std/Test.sol";
-import {Booster} from "../src/Booster.sol";
-import {FP1155} from "../src/FP1155.sol";
-import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
+import { Test, console2 } from "forge-std/Test.sol";
+import { Booster } from "../src/Booster.sol";
+import { FP1155 } from "../src/FP1155.sol";
+import { ERC1967Proxy } from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
 contract BoosterTest is Test {
     Booster public booster;
@@ -28,16 +28,16 @@ contract BoosterTest is Test {
 
         // Deploy FP1155 via ERC1967Proxy and initialize
         FP1155 implementation = new FP1155();
-        bytes memory initData = abi.encodeWithSelector(
-            FP1155.initialize.selector,
-            "https://api.fightfoundation.io/fp/",
-            admin
-        );
+        bytes memory initData =
+            abi.encodeWithSelector(FP1155.initialize.selector, "https://api.fightfoundation.io/fp/", admin);
         ERC1967Proxy proxy = new ERC1967Proxy(address(implementation), initData);
         fp = FP1155(address(proxy));
 
-        // Deploy Booster
-        booster = new Booster(address(fp), admin);
+        // Deploy Booster via ERC1967Proxy and initialize
+        Booster boosterImplementation = new Booster();
+        bytes memory boosterInitData = abi.encodeWithSelector(Booster.initialize.selector, address(fp), admin);
+        ERC1967Proxy boosterProxy = new ERC1967Proxy(address(boosterImplementation), boosterInitData);
+        booster = Booster(address(boosterProxy));
 
         // Grant roles
         fp.grantRole(fp.TRANSFER_AGENT_ROLE(), address(booster));
@@ -46,10 +46,10 @@ contract BoosterTest is Test {
         booster.grantRole(booster.OPERATOR_ROLE(), operator);
 
         // Mint FP to users
-        fp.mint(user1, SEASON_1, 10000 ether, "");
-        fp.mint(user2, SEASON_1, 10000 ether, "");
-        fp.mint(user3, SEASON_1, 10000 ether, "");
-        fp.mint(operator, SEASON_1, 50000 ether, "");
+        fp.mint(user1, SEASON_1, 10_000 ether, "");
+        fp.mint(user2, SEASON_1, 10_000 ether, "");
+        fp.mint(user3, SEASON_1, 10_000 ether, "");
+        fp.mint(operator, SEASON_1, 50_000 ether, "");
 
         // Allowlist participants for transfers
         fp.setTransferAllowlist(user1, true);
@@ -68,11 +68,12 @@ contract BoosterTest is Test {
         vm.prank(operator);
         vm.expectEmit(true, false, false, true);
         emit Booster.EventCreated(EVENT_1, numFights, SEASON_1);
-        booster.createEvent(EVENT_1, numFights, SEASON_1);
+        booster.createEvent(EVENT_1, numFights, SEASON_1, 0);
 
         // Verify event exists
-        (uint256 seasonId, uint256 storedNumFights, bool exists) = booster.getEvent(EVENT_1);
+        (uint256 seasonId, uint256 storedNumFights, bool exists, bool claimReady) = booster.getEvent(EVENT_1);
         assertTrue(exists);
+        assertFalse(claimReady); // Should be false initially
         assertEq(seasonId, SEASON_1);
         assertEq(storedNumFights, 3);
 
@@ -90,22 +91,88 @@ contract BoosterTest is Test {
     function testRevert_createEvent_notOperator() public {
         vm.prank(user1);
         vm.expectRevert();
-        booster.createEvent(EVENT_1, 1, SEASON_1);
+        booster.createEvent(EVENT_1, 1, SEASON_1, 0);
     }
 
     function testRevert_createEvent_duplicate() public {
         vm.startPrank(operator);
-        booster.createEvent(EVENT_1, 1, SEASON_1);
+        booster.createEvent(EVENT_1, 1, SEASON_1, 0);
 
         vm.expectRevert("event exists");
-        booster.createEvent(EVENT_1, 1, SEASON_1);
+        booster.createEvent(EVENT_1, 1, SEASON_1, 0);
         vm.stopPrank();
     }
 
     function testRevert_createEvent_emptyFights() public {
         vm.prank(operator);
         vm.expectRevert("no fights");
-        booster.createEvent(EVENT_1, 0, SEASON_1);
+        booster.createEvent(EVENT_1, 0, SEASON_1, 0);
+    }
+
+    function test_createEvent_withDefaultBoostCutoff() public {
+        uint256 numFights = 3;
+        uint256 cutoff = block.timestamp + 1 days;
+
+        vm.prank(operator);
+        // No events emitted for initial cutoff setup (it's part of event creation, not a change)
+        booster.createEvent(EVENT_1, numFights, SEASON_1, cutoff);
+
+        // Verify all fights have the cutoff set
+        (,,,,,,,,,, uint256 boostCutoff1,) = booster.getFight(EVENT_1, FIGHT_1);
+        (,,,,,,,,,, uint256 boostCutoff2,) = booster.getFight(EVENT_1, FIGHT_2);
+        (,,,,,,,,,, uint256 boostCutoff3,) = booster.getFight(EVENT_1, FIGHT_3);
+
+        assertEq(boostCutoff1, cutoff);
+        assertEq(boostCutoff2, cutoff);
+        assertEq(boostCutoff3, cutoff);
+    }
+
+    function test_createEvent_withZeroCutoff() public {
+        uint256 numFights = 3;
+
+        vm.prank(operator);
+        booster.createEvent(EVENT_1, numFights, SEASON_1, 0);
+
+        // Verify all fights have no cutoff (0)
+        (,,,,,,,,,, uint256 boostCutoff1,) = booster.getFight(EVENT_1, FIGHT_1);
+        (,,,,,,,,,, uint256 boostCutoff2,) = booster.getFight(EVENT_1, FIGHT_2);
+        (,,,,,,,,,, uint256 boostCutoff3,) = booster.getFight(EVENT_1, FIGHT_3);
+
+        assertEq(boostCutoff1, 0);
+        assertEq(boostCutoff2, 0);
+        assertEq(boostCutoff3, 0);
+    }
+
+    function test_createEvent_withDefaultBoostCutoff_preventsBoostsAfterCutoff() public {
+        uint256 cutoff = block.timestamp + 10;
+        vm.prank(operator);
+        booster.createEvent(EVENT_1, 3, SEASON_1, cutoff);
+
+        // Advance past cutoff
+        vm.warp(block.timestamp + 11);
+
+        // Try to place boost - should fail
+        Booster.BoostInput[] memory boosts = new Booster.BoostInput[](1);
+        boosts[0] = Booster.BoostInput(FIGHT_1, 50 ether, Booster.Corner.RED, Booster.WinMethod.KNOCKOUT);
+        vm.prank(user1);
+        vm.expectRevert("boost cutoff passed");
+        booster.placeBoosts(EVENT_1, boosts);
+    }
+
+    function test_createEvent_withDefaultBoostCutoff_allowsBoostsBeforeCutoff() public {
+        uint256 cutoff = block.timestamp + 100;
+        vm.prank(operator);
+        booster.createEvent(EVENT_1, 3, SEASON_1, cutoff);
+
+        // Place boost before cutoff - should succeed
+        Booster.BoostInput[] memory boosts = new Booster.BoostInput[](1);
+        boosts[0] = Booster.BoostInput(FIGHT_1, 50 ether, Booster.Corner.RED, Booster.WinMethod.KNOCKOUT);
+        vm.prank(user1);
+        booster.placeBoosts(EVENT_1, boosts);
+
+        // Verify boost was placed
+        Booster.Boost[] memory userBoosts = booster.getUserBoosts(EVENT_1, FIGHT_1, user1);
+        assertEq(userBoosts[0].amount, 50 ether);
     }
 
     // ============ Boost Placement Tests ============
@@ -143,7 +210,7 @@ contract BoosterTest is Test {
         assertEq(userBoosts2[0].amount, 200 ether);
 
         // Verify FP transferred
-        assertEq(fp.balanceOf(user1, SEASON_1), 10000 ether - 300 ether);
+        assertEq(fp.balanceOf(user1, SEASON_1), 10_000 ether - 300 ether);
         assertEq(fp.balanceOf(address(booster), SEASON_1), 300 ether);
 
         // Verify originalPool updated
@@ -257,7 +324,7 @@ contract BoosterTest is Test {
         assertEq(userBoosts[0].amount, 150 ether);
 
         // Verify FP transferred
-        assertEq(fp.balanceOf(user1, SEASON_1), 10000 ether - 150 ether);
+        assertEq(fp.balanceOf(user1, SEASON_1), 10_000 ether - 150 ether);
 
         // Verify originalPool updated
         (,,,, uint256 originalPool,,,,,,,) = booster.getFight(EVENT_1, FIGHT_1);
@@ -328,14 +395,14 @@ contract BoosterTest is Test {
         vm.prank(operator);
         vm.expectEmit(true, true, true, true);
         emit Booster.BonusDeposited(EVENT_1, FIGHT_1, operator, 1000 ether);
-        booster.depositBonus(EVENT_1, FIGHT_1, 1000 ether);
+        booster.depositBonus(EVENT_1, FIGHT_1, 1000 ether, false);
 
         // Verify bonus pool updated
         (,,, uint256 bonusPool,,,,,,,,) = booster.getFight(EVENT_1, FIGHT_1);
         assertEq(bonusPool, 1000 ether);
 
         // Verify FP transferred
-        assertEq(fp.balanceOf(operator, SEASON_1), 50000 ether - 1000 ether);
+        assertEq(fp.balanceOf(operator, SEASON_1), 50_000 ether - 1000 ether);
         assertEq(fp.balanceOf(address(booster), SEASON_1), 1000 ether);
     }
 
@@ -343,8 +410,8 @@ contract BoosterTest is Test {
         _createDefaultEvent();
 
         vm.startPrank(operator);
-        booster.depositBonus(EVENT_1, FIGHT_1, 500 ether);
-        booster.depositBonus(EVENT_1, FIGHT_1, 300 ether);
+        booster.depositBonus(EVENT_1, FIGHT_1, 500 ether, false);
+        booster.depositBonus(EVENT_1, FIGHT_1, 300 ether, false);
         vm.stopPrank();
 
         (,,, uint256 bonusPool,,,,,,,,) = booster.getFight(EVENT_1, FIGHT_1);
@@ -356,7 +423,7 @@ contract BoosterTest is Test {
 
         vm.prank(user1);
         vm.expectRevert();
-        booster.depositBonus(EVENT_1, FIGHT_1, 1000 ether);
+        booster.depositBonus(EVENT_1, FIGHT_1, 1000 ether, false);
     }
 
     function testRevert_depositBonus_resolved() public {
@@ -365,7 +432,7 @@ contract BoosterTest is Test {
 
         vm.prank(operator);
         vm.expectRevert("fight resolved");
-        booster.depositBonus(EVENT_1, FIGHT_1, 1000 ether);
+        booster.depositBonus(EVENT_1, FIGHT_1, 1000 ether, false);
     }
 
     // ============ Fight Status Tests ============
@@ -465,12 +532,15 @@ contract BoosterTest is Test {
         booster.submitFightResult(EVENT_1, FIGHT_1, Booster.Corner.RED, Booster.WinMethod.KNOCKOUT, 10, 20, 3, 30);
     }
 
-    function testRevert_submitFightResult_alreadyResolved() public {
+    function testRevert_submitFightResult_alreadyClaimReady() public {
         _createDefaultEvent();
         _placeBoostsAndResolve();
 
+        // Mark event as claim ready - now results cannot be updated
+        _setEventClaimReady(EVENT_1);
+
         vm.prank(operator);
-        vm.expectRevert("already resolved");
+        vm.expectRevert("event claim ready");
         booster.submitFightResult(EVENT_1, FIGHT_1, Booster.Corner.RED, Booster.WinMethod.KNOCKOUT, 10, 20, 10, 3);
     }
 
@@ -527,10 +597,13 @@ contract BoosterTest is Test {
             0 // winningPoolTotalShares
         );
 
-        // Try to claim - should revert because no winners
+        // Mark event as claim ready
+        _setEventClaimReady(EVENT_1);
+
+        // Try to claim - should revert because no winners, so nothing to claim
         uint256[] memory indices = booster.getUserBoostIndices(EVENT_1, FIGHT_1, user1);
         vm.prank(user1);
-        vm.expectRevert("no winners");
+        vm.expectRevert("nothing to claim");
         booster.claimReward(EVENT_1, FIGHT_1, indices);
     }
 
@@ -590,6 +663,9 @@ contract BoosterTest is Test {
             EVENT_1, FIGHT_1, Booster.Corner.RED, Booster.WinMethod.KNOCKOUT, 10, 20, 300 ether, 4000 ether
         );
 
+        // Mark event as claim ready
+        _setEventClaimReady(EVENT_1);
+
         // Fetch correct index for user1 boost
         uint256[] memory indices1 = booster.getUserBoostIndices(EVENT_1, FIGHT_1, user1);
         assertEq(indices1.length, 1);
@@ -627,7 +703,7 @@ contract BoosterTest is Test {
 
         // Add bonus pool
         vm.prank(operator);
-        booster.depositBonus(EVENT_1, FIGHT_1, 1000 ether);
+        booster.depositBonus(EVENT_1, FIGHT_1, 1000 ether, false);
 
         // User1: RED + KNOCKOUT = 20 points
         vm.prank(user1);
@@ -645,6 +721,9 @@ contract BoosterTest is Test {
             EVENT_1, FIGHT_1, Booster.Corner.RED, Booster.WinMethod.KNOCKOUT, 10, 20, 100 ether, 2000 ether
         );
 
+        // Mark event as claim ready
+        _setEventClaimReady(EVENT_1);
+
         uint256[] memory indices = new uint256[](1);
         indices[0] = 0;
 
@@ -652,7 +731,7 @@ contract BoosterTest is Test {
         booster.claimReward(EVENT_1, FIGHT_1, indices);
 
         // User1 gets entire pool: 1100 ether
-        assertEq(fp.balanceOf(user1, SEASON_1), 10000 ether - 100 ether + 1100 ether);
+        assertEq(fp.balanceOf(user1, SEASON_1), 10_000 ether - 100 ether + 1100 ether);
 
         // Set short deadline and advance beyond it, check purge sweeps remaining (none expected)
         vm.prank(operator);
@@ -682,6 +761,9 @@ contract BoosterTest is Test {
             EVENT_1, FIGHT_1, Booster.Corner.RED, Booster.WinMethod.KNOCKOUT, 10, 20, 150 ether, 2500 ether
         );
 
+        // Mark event as claim ready
+        _setEventClaimReady(EVENT_1);
+
         // Claim both boosts at once
         uint256[] memory indices = new uint256[](2);
         indices[0] = 0; // 20 points
@@ -691,7 +773,7 @@ contract BoosterTest is Test {
         vm.prank(user1);
         booster.claimReward(EVENT_1, FIGHT_1, indices);
 
-        assertEq(fp.balanceOf(user1, SEASON_1), 10000 ether); // Gets everything back
+        assertEq(fp.balanceOf(user1, SEASON_1), 10_000 ether); // Gets everything back
 
         // Set deadline and attempt purge (should sweep zero)
         vm.prank(operator);
@@ -699,6 +781,25 @@ contract BoosterTest is Test {
         vm.warp(block.timestamp + 2);
         vm.prank(operator);
         booster.purgeEvent(EVENT_1, operator);
+    }
+
+    function test_placeBoost_atBoostCutoff() public {
+        _createDefaultEvent();
+        uint256 cutoff = block.timestamp + 10;
+        vm.prank(operator);
+        booster.setFightBoostCutoff(EVENT_1, FIGHT_1, cutoff);
+
+        // Warp to exact cutoff time (inclusive behavior)
+        vm.warp(cutoff);
+
+        Booster.BoostInput[] memory boosts = new Booster.BoostInput[](1);
+        boosts[0] = Booster.BoostInput(FIGHT_1, 50 ether, Booster.Corner.RED, Booster.WinMethod.KNOCKOUT);
+        vm.prank(user1);
+        booster.placeBoosts(EVENT_1, boosts);
+
+        // Verify boost was placed
+        Booster.Boost[] memory userBoosts = booster.getUserBoosts(EVENT_1, FIGHT_1, user1);
+        assertEq(userBoosts.length, 1);
     }
 
     function testRevert_placeBoost_afterBoostCutoff() public {
@@ -711,6 +812,28 @@ contract BoosterTest is Test {
         vm.prank(user1);
         vm.expectRevert("boost cutoff passed");
         booster.placeBoosts(EVENT_1, boosts);
+    }
+
+    function test_addToBoost_atBoostCutoff() public {
+        _createDefaultEvent();
+        Booster.BoostInput[] memory boosts = new Booster.BoostInput[](1);
+        boosts[0] = Booster.BoostInput(FIGHT_1, 50 ether, Booster.Corner.RED, Booster.WinMethod.KNOCKOUT);
+        vm.prank(user1);
+        booster.placeBoosts(EVENT_1, boosts);
+
+        uint256 cutoff = block.timestamp + 10;
+        vm.prank(operator);
+        booster.setFightBoostCutoff(EVENT_1, FIGHT_1, cutoff);
+
+        // Warp to exact cutoff time (inclusive behavior)
+        vm.warp(cutoff);
+
+        vm.prank(user1);
+        booster.addToBoost(EVENT_1, FIGHT_1, 0, 10 ether);
+
+        // Verify boost was increased
+        Booster.Boost[] memory userBoosts = booster.getUserBoosts(EVENT_1, FIGHT_1, user1);
+        assertEq(userBoosts[0].amount, 60 ether);
     }
 
     function testRevert_addToBoost_afterBoostCutoff() public {
@@ -849,7 +972,7 @@ contract BoosterTest is Test {
     function test_setEventBoostCutoff_largeEvent() public {
         // Create event with many fights
         vm.prank(operator);
-        booster.createEvent("UFC_301", 10, SEASON_1);
+        booster.createEvent("UFC_301", 10, SEASON_1, 0);
 
         uint256 cutoff = block.timestamp + 100;
 
@@ -874,6 +997,8 @@ contract BoosterTest is Test {
         vm.prank(operator);
         booster.setEventClaimDeadline(EVENT_1, block.timestamp + 10);
         vm.warp(block.timestamp + 11);
+        // Mark event as claim ready
+        _setEventClaimReady(EVENT_1);
         uint256[] memory indices = new uint256[](1);
         indices[0] = 0;
         vm.prank(user1);
@@ -904,6 +1029,9 @@ contract BoosterTest is Test {
 
         // user1 claims: prizePool = 300 - 300 + 0 = 0, so gets back stake (100) + 0 = 100 ether
         // Actually, with the new formula: userShares = 20*100 = 2000, winnings = (0*2000)/4000 = 0
+        // Mark event as claim ready
+        _setEventClaimReady(EVENT_1);
+
         // So user1 gets: 100 + 0 = 100 ether (just stake back)
         uint256[] memory indices1 = booster.getUserBoostIndices(EVENT_1, FIGHT_1, user1);
         vm.prank(user1);
@@ -934,6 +1062,9 @@ contract BoosterTest is Test {
         _createDefaultEvent();
         _placeMultipleBoosts();
 
+        // Mark event as claim ready (even though fight is not resolved)
+        _setEventClaimReady(EVENT_1);
+
         uint256[] memory indices = new uint256[](1);
         indices[0] = 0;
 
@@ -946,6 +1077,9 @@ contract BoosterTest is Test {
         _createDefaultEvent();
         _placeBoostsAndResolve();
 
+        // Mark event as claim ready
+        _setEventClaimReady(EVENT_1);
+
         uint256[] memory indices = new uint256[](1);
         indices[0] = 0;
 
@@ -957,6 +1091,9 @@ contract BoosterTest is Test {
     function testRevert_claimReward_alreadyClaimed() public {
         _createDefaultEvent();
         _placeBoostsAndResolve();
+
+        // Mark event as claim ready
+        _setEventClaimReady(EVENT_1);
 
         uint256[] memory indices = new uint256[](1);
         indices[0] = 0;
@@ -981,6 +1118,9 @@ contract BoosterTest is Test {
         // Resolve: BLUE wins
         vm.prank(operator);
         booster.submitFightResult(EVENT_1, FIGHT_1, Booster.Corner.BLUE, Booster.WinMethod.KNOCKOUT, 10, 20, 10, 2);
+
+        // Mark event as claim ready
+        _setEventClaimReady(EVENT_1);
 
         uint256[] memory indices = new uint256[](1);
         indices[0] = 0;
@@ -1028,11 +1168,66 @@ contract BoosterTest is Test {
         assertEq(userBoosts[1].amount, 200 ether);
     }
 
+    function test_getEventFights() public {
+        // Create event with 5 fights
+        vm.prank(operator);
+        booster.createEvent(EVENT_1, 5, SEASON_1, 0);
+
+        // Get all fights - should all be OPEN initially
+        (uint256[] memory fightIds, Booster.FightStatus[] memory statuses) = booster.getEventFights(EVENT_1);
+
+        assertEq(fightIds.length, 5, "Should have 5 fights");
+        assertEq(statuses.length, 5, "Should have 5 statuses");
+
+        // Verify fight IDs are 1, 2, 3, 4, 5
+        for (uint256 i = 0; i < 5; i++) {
+            assertEq(fightIds[i], i + 1, "Fight ID should match index + 1");
+            assertEq(uint256(statuses[i]), uint256(Booster.FightStatus.OPEN), "All fights should be OPEN initially");
+        }
+
+        // Update some fight statuses
+        vm.prank(operator);
+        booster.updateFightStatus(EVENT_1, 1, Booster.FightStatus.CLOSED);
+
+        vm.prank(operator);
+        booster.updateFightStatus(EVENT_1, 2, Booster.FightStatus.CLOSED);
+
+        vm.prank(operator);
+        booster.updateFightStatus(EVENT_1, 3, Booster.FightStatus.RESOLVED);
+
+        // Get fights again and verify statuses
+        (fightIds, statuses) = booster.getEventFights(EVENT_1);
+
+        assertEq(uint256(statuses[0]), uint256(Booster.FightStatus.CLOSED), "Fight 1 should be CLOSED");
+        assertEq(uint256(statuses[1]), uint256(Booster.FightStatus.CLOSED), "Fight 2 should be CLOSED");
+        assertEq(uint256(statuses[2]), uint256(Booster.FightStatus.RESOLVED), "Fight 3 should be RESOLVED");
+        assertEq(uint256(statuses[3]), uint256(Booster.FightStatus.OPEN), "Fight 4 should be OPEN");
+        assertEq(uint256(statuses[4]), uint256(Booster.FightStatus.OPEN), "Fight 5 should be OPEN");
+    }
+
+    function testRevert_getEventFights_eventNotExists() public {
+        vm.expectRevert("event not exists");
+        booster.getEventFights(EVENT_1);
+    }
+
+    function test_getEventFights_singleFight() public {
+        // Create event with 1 fight
+        vm.prank(operator);
+        booster.createEvent(EVENT_1, 1, SEASON_1, 0);
+
+        (uint256[] memory fightIds, Booster.FightStatus[] memory statuses) = booster.getEventFights(EVENT_1);
+
+        assertEq(fightIds.length, 1, "Should have 1 fight");
+        assertEq(statuses.length, 1, "Should have 1 status");
+        assertEq(fightIds[0], 1, "Fight ID should be 1");
+        assertEq(uint256(statuses[0]), uint256(Booster.FightStatus.OPEN), "Fight should be OPEN initially");
+    }
+
     // ============ Helper Functions ============
 
     function _createDefaultEvent() internal {
         vm.prank(operator);
-        booster.createEvent(EVENT_1, 3, SEASON_1);
+        booster.createEvent(EVENT_1, 3, SEASON_1, 0);
     }
 
     function _placeMultipleBoosts() internal {
@@ -1061,6 +1256,11 @@ contract BoosterTest is Test {
         );
     }
 
+    function _setEventClaimReady(string memory eventId) internal {
+        vm.prank(operator);
+        booster.setEventClaimReady(eventId, true);
+    }
+
     // ============ Cancellation Tests ============
 
     function test_cancelFight_refundsAll() public {
@@ -1079,6 +1279,9 @@ contract BoosterTest is Test {
         // Verify fight marked as cancelled
         (,,,,,,,,,,, bool cancelled) = booster.getFight(EVENT_1, FIGHT_1);
         assertTrue(cancelled);
+
+        // Mark event as claim ready
+        _setEventClaimReady(EVENT_1);
 
         // User1 claims refund
         uint256[] memory indices1 = booster.getUserBoostIndices(EVENT_1, FIGHT_1, user1);
@@ -1146,6 +1349,106 @@ contract BoosterTest is Test {
         booster.addToBoost(EVENT_1, FIGHT_1, 0, 10 ether);
     }
 
+    // ============ Maximum Limits Tests ============
+
+    function test_setMaxFightsPerEvent() public {
+        vm.prank(operator);
+        vm.expectEmit(false, false, false, true);
+        emit Booster.MaxFightsPerEventUpdated(20, 50);
+        booster.setMaxFightsPerEvent(50);
+
+        assertEq(booster.maxFightsPerEvent(), 50);
+    }
+
+    function test_createEvent_withinMaxFights() public {
+        // Default max is 20, create event with 20 fights
+        vm.prank(operator);
+        booster.createEvent(EVENT_1, 20, SEASON_1, 0);
+
+        (,, bool exists,) = booster.getEvent(EVENT_1);
+        assertTrue(exists);
+    }
+
+    function testRevert_createEvent_exceedsMaxFights() public {
+        // Default max is 20, try to create event with 21 fights
+        vm.prank(operator);
+        vm.expectRevert("numFights exceeds maximum");
+        booster.createEvent(EVENT_1, 21, SEASON_1, 0);
+    }
+
+    function test_createEvent_unlimitedWhenMaxIsZero() public {
+        // Set max to 0 (unlimited)
+        vm.prank(operator);
+        booster.setMaxFightsPerEvent(0);
+
+        // Should be able to create event with any number of fights
+        vm.prank(operator);
+        booster.createEvent(EVENT_1, 100, SEASON_1, 0);
+
+        (,, bool exists,) = booster.getEvent(EVENT_1);
+        assertTrue(exists);
+    }
+
+    function test_setMaxBonusDeposit() public {
+        vm.prank(operator);
+        vm.expectEmit(false, false, false, true);
+        emit Booster.MaxBonusDepositUpdated(0, 1000 ether);
+        booster.setMaxBonusDeposit(1000 ether);
+
+        assertEq(booster.maxBonusDeposit(), 1000 ether);
+    }
+
+    function test_depositBonus_withinMax() public {
+        _createDefaultEvent();
+
+        // Set max bonus deposit
+        vm.prank(operator);
+        booster.setMaxBonusDeposit(1000 ether);
+
+        // Should be able to deposit up to the limit
+        vm.prank(operator);
+        booster.depositBonus(EVENT_1, FIGHT_1, 1000 ether, false);
+
+        (,,, uint256 bonusPool,,,,,,,,) = booster.getFight(EVENT_1, FIGHT_1);
+        assertEq(bonusPool, 1000 ether);
+    }
+
+    function testRevert_depositBonus_exceedsMax() public {
+        _createDefaultEvent();
+
+        // Set max bonus deposit
+        vm.prank(operator);
+        booster.setMaxBonusDeposit(1000 ether);
+
+        // Try to deposit more than the limit
+        vm.prank(operator);
+        vm.expectRevert("bonus deposit exceeds maximum");
+        booster.depositBonus(EVENT_1, FIGHT_1, 1001 ether, false);
+    }
+
+    function test_depositBonus_unlimitedWhenMaxIsZero() public {
+        _createDefaultEvent();
+
+        // Max is 0 by default (unlimited), should be able to deposit any amount
+        vm.prank(operator);
+        booster.depositBonus(EVENT_1, FIGHT_1, 10_000 ether, false);
+
+        (,,, uint256 bonusPool,,,,,,,,) = booster.getFight(EVENT_1, FIGHT_1);
+        assertEq(bonusPool, 10_000 ether);
+    }
+
+    function testRevert_setMaxFightsPerEvent_notOperator() public {
+        vm.prank(user1);
+        vm.expectRevert();
+        booster.setMaxFightsPerEvent(50);
+    }
+
+    function testRevert_setMaxBonusDeposit_notOperator() public {
+        vm.prank(user1);
+        vm.expectRevert();
+        booster.setMaxBonusDeposit(1000 ether);
+    }
+
     // ============ Points Validation Tests ============
 
     function testRevert_submitResult_zeroPointsForWinner() public {
@@ -1179,9 +1482,42 @@ contract BoosterTest is Test {
         vm.prank(operator);
         booster.submitFightResult(EVENT_1, FIGHT_1, Booster.Corner.NONE, Booster.WinMethod.NO_CONTEST, 10, 20, 10, 3);
 
-        (, Booster.Corner winner, Booster.WinMethod method,,,,,,,,,) = booster.getFight(EVENT_1, FIGHT_1);
+        (, Booster.Corner winner, Booster.WinMethod method,,,,,,,,, bool cancelled) = booster.getFight(EVENT_1, FIGHT_1);
         assertEq(uint256(winner), uint256(Booster.Corner.NONE));
         assertEq(uint256(method), uint256(Booster.WinMethod.NO_CONTEST));
+        // Verify that cancelled flag is automatically set for no-contest outcomes
+        assertTrue(cancelled, "fight should be marked as cancelled for no-contest");
+    }
+
+    function test_submitResult_noContest_enablesRefunds() public {
+        _createDefaultEvent();
+        _placeMultipleBoosts();
+
+        uint256 user1Before = fp.balanceOf(user1, SEASON_1);
+        uint256 user2Before = fp.balanceOf(user2, SEASON_1);
+
+        // Submit no-contest result via submitFightResult
+        vm.prank(operator);
+        booster.submitFightResult(EVENT_1, FIGHT_1, Booster.Corner.NONE, Booster.WinMethod.NO_CONTEST, 10, 20, 0, 0);
+
+        // Verify fight is marked as cancelled
+        (,,,,,,,,,,, bool cancelled) = booster.getFight(EVENT_1, FIGHT_1);
+        assertTrue(cancelled, "fight should be marked as cancelled");
+
+        // Mark event as claim ready (required even for refunds)
+        _setEventClaimReady(EVENT_1);
+
+        // Users should be able to claim refunds
+        uint256[] memory indices1 = booster.getUserBoostIndices(EVENT_1, FIGHT_1, user1);
+        uint256[] memory indices2 = booster.getUserBoostIndices(EVENT_1, FIGHT_1, user2);
+
+        vm.prank(user1);
+        booster.claimReward(EVENT_1, FIGHT_1, indices1);
+        assertEq(fp.balanceOf(user1, SEASON_1), user1Before + 100 ether);
+
+        vm.prank(user2);
+        booster.claimReward(EVENT_1, FIGHT_1, indices2);
+        assertEq(fp.balanceOf(user2, SEASON_1), user2Before + 200 ether);
     }
 
     // ============ Claim Rewards (Multiple Fights) Tests ============
@@ -1229,6 +1565,9 @@ contract BoosterTest is Test {
             EVENT_1, FIGHT_2, Booster.Corner.BLUE, Booster.WinMethod.SUBMISSION, 10, 20, 400 ether, 6000 ether
         );
 
+        // Mark event as claim ready
+        _setEventClaimReady(EVENT_1);
+
         // Claim rewards from both fights in one transaction
         // Only claim winning boosts (indices 0 and 2 for FIGHT_1, indices 0 and 2 for FIGHT_2)
         Booster.ClaimInput[] memory claims = new Booster.ClaimInput[](2);
@@ -1240,8 +1579,8 @@ contract BoosterTest is Test {
         indices2[0] = 0; // BLUE + SUBMISSION → 20 points
         indices2[1] = 2; // BLUE + DECISION → 10 points
 
-        claims[0] = Booster.ClaimInput({fightId: FIGHT_1, boostIndices: indices1});
-        claims[1] = Booster.ClaimInput({fightId: FIGHT_2, boostIndices: indices2});
+        claims[0] = Booster.ClaimInput({ fightId: FIGHT_1, boostIndices: indices1 });
+        claims[1] = Booster.ClaimInput({ fightId: FIGHT_2, boostIndices: indices2 });
 
         uint256 balanceBefore = fp.balanceOf(user1, SEASON_1);
 
@@ -1277,10 +1616,10 @@ contract BoosterTest is Test {
 
         // Add bonus pools
         vm.prank(operator);
-        booster.depositBonus(EVENT_1, FIGHT_1, 500 ether);
+        booster.depositBonus(EVENT_1, FIGHT_1, 500 ether, false);
 
         vm.prank(operator);
-        booster.depositBonus(EVENT_1, FIGHT_2, 1000 ether);
+        booster.depositBonus(EVENT_1, FIGHT_2, 1000 ether, false);
 
         // Resolve fights
         // FIGHT_1: user1 wins with 100 ether stake, 20 points
@@ -1297,13 +1636,16 @@ contract BoosterTest is Test {
             EVENT_1, FIGHT_2, Booster.Corner.BLUE, Booster.WinMethod.SUBMISSION, 10, 20, 200 ether, 4000 ether
         );
 
+        // Mark event as claim ready
+        _setEventClaimReady(EVENT_1);
+
         // Claim rewards
         Booster.ClaimInput[] memory claims = new Booster.ClaimInput[](2);
         uint256[] memory indices1 = booster.getUserBoostIndices(EVENT_1, FIGHT_1, user1);
         uint256[] memory indices2 = booster.getUserBoostIndices(EVENT_1, FIGHT_2, user1);
 
-        claims[0] = Booster.ClaimInput({fightId: FIGHT_1, boostIndices: indices1});
-        claims[1] = Booster.ClaimInput({fightId: FIGHT_2, boostIndices: indices2});
+        claims[0] = Booster.ClaimInput({ fightId: FIGHT_1, boostIndices: indices1 });
+        claims[1] = Booster.ClaimInput({ fightId: FIGHT_2, boostIndices: indices2 });
 
         uint256 balanceBefore = fp.balanceOf(user1, SEASON_1);
 
@@ -1322,7 +1664,7 @@ contract BoosterTest is Test {
         _createDefaultEvent();
 
         vm.prank(operator);
-        booster.depositBonus(EVENT_1, FIGHT_2, 1000 ether);
+        booster.depositBonus(EVENT_1, FIGHT_2, 1000 ether, false);
 
         // User1 places boosts on multiple fights
         Booster.BoostInput[] memory boosts1 = new Booster.BoostInput[](1);
@@ -1346,13 +1688,16 @@ contract BoosterTest is Test {
             EVENT_1, FIGHT_2, Booster.Corner.BLUE, Booster.WinMethod.SUBMISSION, 10, 20, 200 ether, 4000 ether
         );
 
+        // Mark event as claim ready
+        _setEventClaimReady(EVENT_1);
+
         // Claim from both fights
         Booster.ClaimInput[] memory claims = new Booster.ClaimInput[](2);
         uint256[] memory indices1 = booster.getUserBoostIndices(EVENT_1, FIGHT_1, user1);
         uint256[] memory indices2 = booster.getUserBoostIndices(EVENT_1, FIGHT_2, user1);
 
-        claims[0] = Booster.ClaimInput({fightId: FIGHT_1, boostIndices: indices1});
-        claims[1] = Booster.ClaimInput({fightId: FIGHT_2, boostIndices: indices2});
+        claims[0] = Booster.ClaimInput({ fightId: FIGHT_1, boostIndices: indices1 });
+        claims[1] = Booster.ClaimInput({ fightId: FIGHT_2, boostIndices: indices2 });
 
         uint256 balanceBefore = fp.balanceOf(user1, SEASON_1);
 
@@ -1391,13 +1736,16 @@ contract BoosterTest is Test {
             EVENT_1, FIGHT_2, Booster.Corner.BLUE, Booster.WinMethod.SUBMISSION, 10, 20, 200 ether, 4000 ether
         );
 
+        // Mark event as claim ready
+        _setEventClaimReady(EVENT_1);
+
         // Claim from both fights - fight 1 should be skipped
         Booster.ClaimInput[] memory claims = new Booster.ClaimInput[](2);
         uint256[] memory indices1 = booster.getUserBoostIndices(EVENT_1, FIGHT_1, user1);
         uint256[] memory indices2 = booster.getUserBoostIndices(EVENT_1, FIGHT_2, user1);
 
-        claims[0] = Booster.ClaimInput({fightId: FIGHT_1, boostIndices: indices1});
-        claims[1] = Booster.ClaimInput({fightId: FIGHT_2, boostIndices: indices2});
+        claims[0] = Booster.ClaimInput({ fightId: FIGHT_1, boostIndices: indices1 });
+        claims[1] = Booster.ClaimInput({ fightId: FIGHT_2, boostIndices: indices2 });
 
         uint256 balanceBefore = fp.balanceOf(user1, SEASON_1);
 
@@ -1429,13 +1777,16 @@ contract BoosterTest is Test {
         vm.prank(operator);
         booster.cancelFight(EVENT_1, FIGHT_2);
 
+        // Mark event as claim ready
+        _setEventClaimReady(EVENT_1);
+
         // Claim refunds from both fights
         Booster.ClaimInput[] memory claims = new Booster.ClaimInput[](2);
         uint256[] memory indices1 = booster.getUserBoostIndices(EVENT_1, FIGHT_1, user1);
         uint256[] memory indices2 = booster.getUserBoostIndices(EVENT_1, FIGHT_2, user1);
 
-        claims[0] = Booster.ClaimInput({fightId: FIGHT_1, boostIndices: indices1});
-        claims[1] = Booster.ClaimInput({fightId: FIGHT_2, boostIndices: indices2});
+        claims[0] = Booster.ClaimInput({ fightId: FIGHT_1, boostIndices: indices1 });
+        claims[1] = Booster.ClaimInput({ fightId: FIGHT_2, boostIndices: indices2 });
 
         uint256 balanceBefore = fp.balanceOf(user1, SEASON_1);
 
@@ -1460,7 +1811,7 @@ contract BoosterTest is Test {
         Booster.ClaimInput[] memory claims = new Booster.ClaimInput[](1);
         uint256[] memory indices = new uint256[](1);
         indices[0] = 0;
-        claims[0] = Booster.ClaimInput({fightId: FIGHT_1, boostIndices: indices});
+        claims[0] = Booster.ClaimInput({ fightId: FIGHT_1, boostIndices: indices });
 
         vm.prank(user1);
         vm.expectRevert("event not exists");
@@ -1482,9 +1833,12 @@ contract BoosterTest is Test {
         booster.setEventClaimDeadline(EVENT_1, block.timestamp + 10);
         vm.warp(block.timestamp + 11);
 
+        // Mark event as claim ready
+        _setEventClaimReady(EVENT_1);
+
         Booster.ClaimInput[] memory claims = new Booster.ClaimInput[](1);
         uint256[] memory indices = booster.getUserBoostIndices(EVENT_1, FIGHT_1, user1);
-        claims[0] = Booster.ClaimInput({fightId: FIGHT_1, boostIndices: indices});
+        claims[0] = Booster.ClaimInput({ fightId: FIGHT_1, boostIndices: indices });
 
         vm.prank(user1);
         vm.expectRevert("claim deadline passed");
@@ -1499,9 +1853,12 @@ contract BoosterTest is Test {
         vm.prank(user1);
         booster.placeBoosts(EVENT_1, boosts);
 
+        // Mark event as claim ready (even though fight is not resolved)
+        _setEventClaimReady(EVENT_1);
+
         Booster.ClaimInput[] memory claims = new Booster.ClaimInput[](1);
         uint256[] memory indices = booster.getUserBoostIndices(EVENT_1, FIGHT_1, user1);
-        claims[0] = Booster.ClaimInput({fightId: FIGHT_1, boostIndices: indices});
+        claims[0] = Booster.ClaimInput({ fightId: FIGHT_1, boostIndices: indices });
 
         vm.prank(user1);
         vm.expectRevert("not resolved");
@@ -1510,14 +1867,20 @@ contract BoosterTest is Test {
 
     function testRevert_claimRewards_invalidFightId() public {
         _createDefaultEvent();
+        _placeMultipleBoosts();
 
         vm.prank(operator);
-        booster.submitFightResult(EVENT_1, FIGHT_1, Booster.Corner.RED, Booster.WinMethod.KNOCKOUT, 10, 20, 10, 2);
+        booster.submitFightResult(
+            EVENT_1, FIGHT_1, Booster.Corner.RED, Booster.WinMethod.KNOCKOUT, 10, 20, 100 ether, 2000 ether
+        );
+
+        // Mark event as claim ready
+        _setEventClaimReady(EVENT_1);
 
         Booster.ClaimInput[] memory claims = new Booster.ClaimInput[](1);
         uint256[] memory indices = new uint256[](1);
         indices[0] = 0;
-        claims[0] = Booster.ClaimInput({fightId: INVALID_FIGHT_ID, boostIndices: indices});
+        claims[0] = Booster.ClaimInput({ fightId: INVALID_FIGHT_ID, boostIndices: indices });
 
         vm.prank(user1);
         vm.expectRevert("fightId not in event");
@@ -1526,13 +1889,19 @@ contract BoosterTest is Test {
 
     function testRevert_claimRewards_emptyBoostIndices() public {
         _createDefaultEvent();
+        _placeMultipleBoosts();
 
         vm.prank(operator);
-        booster.submitFightResult(EVENT_1, FIGHT_1, Booster.Corner.RED, Booster.WinMethod.KNOCKOUT, 10, 20, 10, 2);
+        booster.submitFightResult(
+            EVENT_1, FIGHT_1, Booster.Corner.RED, Booster.WinMethod.KNOCKOUT, 10, 20, 100 ether, 2000 ether
+        );
+
+        // Mark event as claim ready
+        _setEventClaimReady(EVENT_1);
 
         Booster.ClaimInput[] memory claims = new Booster.ClaimInput[](1);
         uint256[] memory indices = new uint256[](0);
-        claims[0] = Booster.ClaimInput({fightId: FIGHT_1, boostIndices: indices});
+        claims[0] = Booster.ClaimInput({ fightId: FIGHT_1, boostIndices: indices });
 
         vm.prank(user1);
         vm.expectRevert("no boost indices");
@@ -1550,9 +1919,12 @@ contract BoosterTest is Test {
         vm.prank(operator);
         booster.submitFightResult(EVENT_1, FIGHT_1, Booster.Corner.RED, Booster.WinMethod.KNOCKOUT, 10, 20, 10, 2);
 
+        // Mark event as claim ready
+        _setEventClaimReady(EVENT_1);
+
         Booster.ClaimInput[] memory claims = new Booster.ClaimInput[](1);
         uint256[] memory indices = booster.getUserBoostIndices(EVENT_1, FIGHT_1, user1);
-        claims[0] = Booster.ClaimInput({fightId: FIGHT_1, boostIndices: indices});
+        claims[0] = Booster.ClaimInput({ fightId: FIGHT_1, boostIndices: indices });
 
         vm.prank(user2);
         vm.expectRevert("not boost owner");
@@ -1574,6 +1946,9 @@ contract BoosterTest is Test {
             EVENT_1, FIGHT_1, Booster.Corner.RED, Booster.WinMethod.KNOCKOUT, 10, 20, 100 ether, 2000 ether
         );
 
+        // Mark event as claim ready
+        _setEventClaimReady(EVENT_1);
+
         // Claim first time
         uint256[] memory indices = booster.getUserBoostIndices(EVENT_1, FIGHT_1, user1);
         vm.prank(user1);
@@ -1581,7 +1956,7 @@ contract BoosterTest is Test {
 
         // Try to claim again via claimRewards
         Booster.ClaimInput[] memory claims = new Booster.ClaimInput[](1);
-        claims[0] = Booster.ClaimInput({fightId: FIGHT_1, boostIndices: indices});
+        claims[0] = Booster.ClaimInput({ fightId: FIGHT_1, boostIndices: indices });
 
         vm.prank(user1);
         vm.expectRevert("already claimed");
@@ -1600,9 +1975,12 @@ contract BoosterTest is Test {
         vm.prank(operator);
         booster.submitFightResult(EVENT_1, FIGHT_1, Booster.Corner.BLUE, Booster.WinMethod.KNOCKOUT, 10, 20, 10, 2);
 
+        // Mark event as claim ready
+        _setEventClaimReady(EVENT_1);
+
         Booster.ClaimInput[] memory claims = new Booster.ClaimInput[](1);
         uint256[] memory indices = booster.getUserBoostIndices(EVENT_1, FIGHT_1, user1);
-        claims[0] = Booster.ClaimInput({fightId: FIGHT_1, boostIndices: indices});
+        claims[0] = Booster.ClaimInput({ fightId: FIGHT_1, boostIndices: indices });
 
         vm.prank(user1);
         vm.expectRevert("boost did not win");
@@ -1616,10 +1994,13 @@ contract BoosterTest is Test {
         vm.prank(operator);
         booster.submitFightResult(EVENT_1, FIGHT_1, Booster.Corner.RED, Booster.WinMethod.KNOCKOUT, 10, 20, 0, 0);
 
+        // Mark event as claim ready
+        _setEventClaimReady(EVENT_1);
+
         Booster.ClaimInput[] memory claims = new Booster.ClaimInput[](1);
         uint256[] memory indices = new uint256[](1);
         indices[0] = 0;
-        claims[0] = Booster.ClaimInput({fightId: FIGHT_1, boostIndices: indices});
+        claims[0] = Booster.ClaimInput({ fightId: FIGHT_1, boostIndices: indices });
 
         vm.prank(user1);
         vm.expectRevert("nothing to claim");
@@ -1639,9 +2020,467 @@ contract BoosterTest is Test {
 
         // Deposit bonus
         vm.prank(operator);
-        booster.depositBonus(EVENT_1, FIGHT_1, 500 ether);
+        booster.depositBonus(EVENT_1, FIGHT_1, 500 ether, false);
 
         // Check totalPool
         assertEq(booster.totalPool(EVENT_1, FIGHT_1), 600 ether);
+    }
+
+    // ============ Event Claim Ready Tests ============
+
+    function test_setEventClaimReady() public {
+        _createDefaultEvent();
+
+        // Verify event is not claim ready initially
+        (,,, bool claimReady) = booster.getEvent(EVENT_1);
+        assertFalse(claimReady);
+
+        // Mark event as claim ready
+        vm.prank(operator);
+        vm.expectEmit(true, false, false, false);
+        emit Booster.EventClaimReady(EVENT_1, true);
+        booster.setEventClaimReady(EVENT_1, true);
+
+        // Verify event is now claim ready
+        (,,, claimReady) = booster.getEvent(EVENT_1);
+        assertTrue(claimReady);
+        assertTrue(booster.isEventClaimReady(EVENT_1));
+
+        // Test setting it back to false
+        vm.prank(operator);
+        vm.expectEmit(true, false, false, false);
+        emit Booster.EventClaimReady(EVENT_1, false);
+        booster.setEventClaimReady(EVENT_1, false);
+
+        // Verify event is no longer claim ready
+        (,,, claimReady) = booster.getEvent(EVENT_1);
+        assertFalse(claimReady);
+        assertFalse(booster.isEventClaimReady(EVENT_1));
+    }
+
+    function testRevert_setEventClaimReady_notOperator() public {
+        _createDefaultEvent();
+
+        vm.prank(user1);
+        vm.expectRevert();
+        booster.setEventClaimReady(EVENT_1, true);
+    }
+
+    function testRevert_claimReward_notClaimReady() public {
+        _createDefaultEvent();
+        _placeBoostsAndResolve();
+
+        // Try to claim without marking event as claim ready
+        uint256[] memory indices = booster.getUserBoostIndices(EVENT_1, FIGHT_1, user1);
+        vm.prank(user1);
+        vm.expectRevert("event not claim ready");
+        booster.claimReward(EVENT_1, FIGHT_1, indices);
+    }
+
+    function testRevert_claimRewards_notClaimReady() public {
+        _createDefaultEvent();
+        _placeBoostsAndResolve();
+
+        // Try to claim without marking event as claim ready
+        Booster.ClaimInput[] memory claims = new Booster.ClaimInput[](1);
+        uint256[] memory indices = booster.getUserBoostIndices(EVENT_1, FIGHT_1, user1);
+        claims[0] = Booster.ClaimInput({ fightId: FIGHT_1, boostIndices: indices });
+
+        vm.prank(user1);
+        vm.expectRevert("event not claim ready");
+        booster.claimRewards(EVENT_1, claims);
+    }
+
+    function test_submitFightResult_canUpdateBeforeClaimReady() public {
+        _createDefaultEvent();
+        _placeMultipleBoosts();
+
+        // Submit result first time
+        vm.prank(operator);
+        booster.submitFightResult(
+            EVENT_1, FIGHT_1, Booster.Corner.RED, Booster.WinMethod.KNOCKOUT, 10, 20, 100 ether, 2000 ether
+        );
+
+        // Verify fight is resolved
+        (Booster.FightStatus status,,,,,,,,,,,) = booster.getFight(EVENT_1, FIGHT_1);
+        assertEq(uint256(status), uint256(Booster.FightStatus.RESOLVED));
+
+        // Can update result before event is claim ready
+        vm.prank(operator);
+        booster.submitFightResult(
+            EVENT_1, FIGHT_1, Booster.Corner.RED, Booster.WinMethod.SUBMISSION, 10, 20, 100 ether, 2000 ether
+        );
+
+        // Verify result was updated
+        (, Booster.Corner winner, Booster.WinMethod method,,,,,,,,,) = booster.getFight(EVENT_1, FIGHT_1);
+        assertEq(uint256(winner), uint256(Booster.Corner.RED));
+        assertEq(uint256(method), uint256(Booster.WinMethod.SUBMISSION));
+    }
+
+    function testRevert_submitFightResult_cannotUpdateAfterClaimReady() public {
+        _createDefaultEvent();
+        _placeMultipleBoosts();
+
+        // Submit result
+        vm.prank(operator);
+        booster.submitFightResult(
+            EVENT_1, FIGHT_1, Booster.Corner.RED, Booster.WinMethod.KNOCKOUT, 10, 20, 100 ether, 2000 ether
+        );
+
+        // Mark event as claim ready
+        vm.prank(operator);
+        booster.setEventClaimReady(EVENT_1, true);
+
+        // Cannot update result after event is claim ready
+        vm.prank(operator);
+        vm.expectRevert("event claim ready");
+        booster.submitFightResult(
+            EVENT_1, FIGHT_1, Booster.Corner.RED, Booster.WinMethod.SUBMISSION, 10, 20, 100 ether, 2000 ether
+        );
+    }
+
+    // ============ Real-world Scenario Tests ============
+
+    function test_realWorldScenario_userNotOnAllowlist() public {
+        vm.startPrank(admin);
+
+        // Deploy fresh FP1155 and Booster to simulate mainnet conditions
+        FP1155 implementation = new FP1155();
+        bytes memory initData =
+            abi.encodeWithSelector(FP1155.initialize.selector, "https://api.fightfoundation.io/fp/", admin);
+        ERC1967Proxy proxy = new ERC1967Proxy(address(implementation), initData);
+        FP1155 fpReal = FP1155(address(proxy));
+
+        // Deploy Booster via ERC1967Proxy and initialize
+        Booster boosterImplementation = new Booster();
+        bytes memory boosterInitData = abi.encodeWithSelector(Booster.initialize.selector, address(fpReal), admin);
+        ERC1967Proxy boosterProxy = new ERC1967Proxy(address(boosterImplementation), boosterInitData);
+        Booster boosterReal = Booster(address(boosterProxy));
+
+        // Grant roles like mainnet
+        fpReal.grantRole(fpReal.TRANSFER_AGENT_ROLE(), address(boosterReal));
+        fpReal.grantRole(fpReal.MINTER_ROLE(), admin);
+        boosterReal.grantRole(boosterReal.OPERATOR_ROLE(), admin);
+
+        // Mint tokens to a regular user (NOT on allowlist)
+        address regularUser = makeAddr("regularUser");
+        fpReal.mint(regularUser, SEASON_1, 10_000 ether, "");
+
+        // Create event
+        boosterReal.createEvent(EVENT_1, 3, SEASON_1, 0);
+
+        vm.stopPrank();
+
+        // Regular user (NOT on allowlist) tries to place boost
+        vm.prank(regularUser);
+        Booster.BoostInput[] memory boosts = new Booster.BoostInput[](1);
+        boosts[0] = Booster.BoostInput(FIGHT_1, 100 ether, Booster.Corner.RED, Booster.WinMethod.KNOCKOUT);
+
+        // This should work because Booster has TRANSFER_AGENT_ROLE
+        boosterReal.placeBoosts(EVENT_1, boosts);
+
+        // Verify boost was placed
+        assertEq(fpReal.balanceOf(regularUser, SEASON_1), 9900 ether);
+        assertEq(fpReal.balanceOf(address(boosterReal), SEASON_1), 100 ether);
+    }
+
+    function test_realWorldScenario_claimWithoutAllowlist() public {
+        vm.startPrank(admin);
+
+        // Deploy fresh FP1155 and Booster
+        FP1155 implementation = new FP1155();
+        bytes memory initData =
+            abi.encodeWithSelector(FP1155.initialize.selector, "https://api.fightfoundation.io/fp/", admin);
+        ERC1967Proxy proxy = new ERC1967Proxy(address(implementation), initData);
+        FP1155 fpReal = FP1155(address(proxy));
+
+        // Deploy Booster via ERC1967Proxy and initialize
+        Booster boosterImplementation = new Booster();
+        bytes memory boosterInitData = abi.encodeWithSelector(Booster.initialize.selector, address(fpReal), admin);
+        ERC1967Proxy boosterProxy = new ERC1967Proxy(address(boosterImplementation), boosterInitData);
+        Booster boosterReal = Booster(address(boosterProxy));
+
+        // Grant roles - Booster has TRANSFER_AGENT_ROLE
+        fpReal.grantRole(fpReal.TRANSFER_AGENT_ROLE(), address(boosterReal));
+        fpReal.grantRole(fpReal.MINTER_ROLE(), admin);
+        boosterReal.grantRole(boosterReal.OPERATOR_ROLE(), admin);
+
+        // Create two regular users (NOT on allowlist)
+        address user1Real = makeAddr("user1Real");
+        address user2Real = makeAddr("user2Real");
+
+        fpReal.mint(user1Real, SEASON_1, 10_000 ether, "");
+        fpReal.mint(user2Real, SEASON_1, 10_000 ether, "");
+
+        // Create event
+        boosterReal.createEvent(EVENT_1, 3, SEASON_1, 0);
+
+        vm.stopPrank();
+
+        // Users place boosts
+        vm.prank(user1Real);
+        Booster.BoostInput[] memory boosts1 = new Booster.BoostInput[](1);
+        boosts1[0] = Booster.BoostInput(FIGHT_1, 100 ether, Booster.Corner.RED, Booster.WinMethod.KNOCKOUT);
+        boosterReal.placeBoosts(EVENT_1, boosts1);
+
+        vm.prank(user2Real);
+        Booster.BoostInput[] memory boosts2 = new Booster.BoostInput[](1);
+        boosts2[0] = Booster.BoostInput(FIGHT_1, 200 ether, Booster.Corner.BLUE, Booster.WinMethod.SUBMISSION);
+        boosterReal.placeBoosts(EVENT_1, boosts2);
+
+        // Resolve fight
+        vm.prank(admin);
+        boosterReal.submitFightResult(
+            EVENT_1, FIGHT_1, Booster.Corner.RED, Booster.WinMethod.KNOCKOUT, 10, 20, 100 ether, 2000 ether
+        );
+
+        // Mark event as claim ready
+        vm.prank(admin);
+        boosterReal.setEventClaimReady(EVENT_1, true);
+
+        // User1 (winner) claims without being on allowlist
+        uint256[] memory indices = boosterReal.getUserBoostIndices(EVENT_1, FIGHT_1, user1Real);
+
+        vm.prank(user1Real);
+        boosterReal.claimReward(EVENT_1, FIGHT_1, indices);
+
+        // Verify payout: stake (100) + winnings from prize pool (200-100=100 bonus, all goes to user1)
+        // prizePool = 300 - 100 + 0 = 200, user gets 200 + 100 = 300
+        assertEq(fpReal.balanceOf(user1Real, SEASON_1), 10_000 ether - 100 ether + 300 ether);
+    }
+
+    function test_realWorldScenario_multipleUsersNoneOnAllowlist() public {
+        vm.startPrank(admin);
+
+        // Deploy fresh contracts
+        FP1155 implementation = new FP1155();
+        bytes memory initData =
+            abi.encodeWithSelector(FP1155.initialize.selector, "https://api.fightfoundation.io/fp/", admin);
+        ERC1967Proxy proxy = new ERC1967Proxy(address(implementation), initData);
+        FP1155 fpReal = FP1155(address(proxy));
+
+        // Deploy Booster via ERC1967Proxy and initialize
+        Booster boosterImplementation = new Booster();
+        bytes memory boosterInitData = abi.encodeWithSelector(Booster.initialize.selector, address(fpReal), admin);
+        ERC1967Proxy boosterProxy = new ERC1967Proxy(address(boosterImplementation), boosterInitData);
+        Booster boosterReal = Booster(address(boosterProxy));
+
+        // Setup roles
+        fpReal.grantRole(fpReal.TRANSFER_AGENT_ROLE(), address(boosterReal));
+        fpReal.grantRole(fpReal.MINTER_ROLE(), admin);
+        boosterReal.grantRole(boosterReal.OPERATOR_ROLE(), admin);
+
+        // Create 5 regular users
+        address[] memory users = new address[](5);
+        for (uint256 i = 0; i < 5; i++) {
+            users[i] = makeAddr(string(abi.encodePacked("user", i)));
+            fpReal.mint(users[i], SEASON_1, 10_000 ether, "");
+        }
+
+        // Create event
+        boosterReal.createEvent(EVENT_1, 1, SEASON_1, 0);
+
+        vm.stopPrank();
+
+        // All users place boosts
+        for (uint256 i = 0; i < 5; i++) {
+            vm.prank(users[i]);
+            Booster.BoostInput[] memory boosts = new Booster.BoostInput[](1);
+            boosts[0] = Booster.BoostInput(
+                FIGHT_1,
+                (i + 1) * 100 ether,
+                i % 2 == 0 ? Booster.Corner.RED : Booster.Corner.BLUE,
+                Booster.WinMethod.KNOCKOUT
+            );
+            boosterReal.placeBoosts(EVENT_1, boosts);
+        }
+
+        // Resolve: RED + KNOCKOUT wins (users 0, 2, 4 win)
+        // Winners: user0 (100), user2 (300), user4 (500) = 900 ether total
+        // Losers: user1 (200), user3 (400) = 600 ether total
+        // sumWinnersStakes = 900, winningPoolTotalShares = (20*100) + (20*300) + (20*500) = 18000
+        vm.prank(admin);
+        boosterReal.submitFightResult(
+            EVENT_1, FIGHT_1, Booster.Corner.RED, Booster.WinMethod.KNOCKOUT, 10, 20, 900 ether, 18_000 ether
+        );
+
+        // Mark event as claim ready
+        vm.prank(admin);
+        boosterReal.setEventClaimReady(EVENT_1, true);
+
+        // Winners claim
+        uint256 totalPaidOut = 0;
+        for (uint256 i = 0; i < 5; i++) {
+            if (i % 2 == 0) {
+                // Winners
+                uint256[] memory indices = boosterReal.getUserBoostIndices(EVENT_1, FIGHT_1, users[i]);
+                uint256 balBefore = fpReal.balanceOf(users[i], SEASON_1);
+
+                vm.prank(users[i]);
+                boosterReal.claimReward(EVENT_1, FIGHT_1, indices);
+
+                uint256 payout = fpReal.balanceOf(users[i], SEASON_1) - balBefore;
+                totalPaidOut += payout;
+            }
+        }
+
+        // Total pool was 1500 ether, all should be distributed (allow 1 wei rounding error)
+        assertApproxEqAbs(totalPaidOut, 1500 ether, 1);
+    }
+
+    /**
+     * @notice Test verifying the fix for cancelled fight refund accounting bug
+     * @dev This test verifies that cancelled fight refunds are correctly reflected in fight.claimedAmount,
+     *      allowing purgeEvent to correctly calculate unclaimed funds and transfer the remaining balance
+     */
+    function test_cancelledFightRefundAccountingBug() public {
+        // Setup: Create event and place bets
+        _createDefaultEvent();
+
+        uint256 user1Stake = 100 ether;
+        uint256 user2Stake = 200 ether;
+        uint256 bonusAmount = 300 ether;
+
+        // Users place boosts
+        Booster.BoostInput[] memory boosts1 = new Booster.BoostInput[](1);
+        boosts1[0] = Booster.BoostInput(FIGHT_1, user1Stake, Booster.Corner.RED, Booster.WinMethod.KNOCKOUT);
+
+        Booster.BoostInput[] memory boosts2 = new Booster.BoostInput[](1);
+        boosts2[0] = Booster.BoostInput(FIGHT_1, user2Stake, Booster.Corner.BLUE, Booster.WinMethod.SUBMISSION);
+
+        vm.prank(user1);
+        booster.placeBoosts(EVENT_1, boosts1);
+
+        vm.prank(user2);
+        booster.placeBoosts(EVENT_1, boosts2);
+
+        // Operator deposits bonus
+        vm.prank(operator);
+        booster.depositBonus(EVENT_1, FIGHT_1, bonusAmount, false);
+
+        // Verify initial state
+        (
+            ,,,
+            uint256 bonusPool,
+            uint256 originalPool,
+            uint256 _sumWinnersStakes,
+            uint256 _winningPoolTotalShares,
+            uint256 _pointsForWinner,
+            uint256 _pointsForWinnerMethod,
+            uint256 claimedAmount,
+            uint256 _boostCutoff,
+            bool _cancelled
+        ) = booster.getFight(EVENT_1, FIGHT_1);
+        uint256 totalPool = originalPool + bonusPool;
+
+        console2.log("Initial state:");
+        console2.log("  Original pool: %d", originalPool);
+        console2.log("  Bonus pool: %d", bonusPool);
+        console2.log("  Total pool: %d", totalPool);
+        console2.log("  Claimed amount: %d", claimedAmount);
+        console2.log("  Contract balance: %d", fp.balanceOf(address(booster), SEASON_1));
+
+        assertEq(originalPool, user1Stake + user2Stake, "Original pool should equal total stakes");
+        assertEq(bonusPool, bonusAmount, "Bonus pool should equal deposited amount");
+        assertEq(claimedAmount, 0, "Initially no claims");
+        assertEq(totalPool, 600 ether, "Total pool should be 600 ether");
+
+        // STEP 1: Cancel the fight
+        vm.prank(operator);
+        booster.cancelFight(EVENT_1, FIGHT_1);
+
+        // Mark event as claim ready (required even for refunds)
+        _setEventClaimReady(EVENT_1);
+
+        // STEP 2: Users claim refunds
+        uint256[] memory user1Indices = booster.getUserBoostIndices(EVENT_1, FIGHT_1, user1);
+        uint256[] memory user2Indices = booster.getUserBoostIndices(EVENT_1, FIGHT_1, user2);
+
+        uint256 contractBalanceBefore = fp.balanceOf(address(booster), SEASON_1);
+        uint256 user1BalanceBefore = fp.balanceOf(user1, SEASON_1);
+        uint256 user2BalanceBefore = fp.balanceOf(user2, SEASON_1);
+
+        console2.log("\nBefore refunds:");
+        console2.log("  Contract balance: %d", contractBalanceBefore);
+        console2.log("  User1 balance: %d", user1BalanceBefore);
+        console2.log("  User2 balance: %d", user2BalanceBefore);
+
+        // User1 claims refund
+        vm.prank(user1);
+        booster.claimReward(EVENT_1, FIGHT_1, user1Indices);
+
+        // User2 claims refund
+        vm.prank(user2);
+        booster.claimReward(EVENT_1, FIGHT_1, user2Indices);
+
+        uint256 contractBalanceAfterRefunds = fp.balanceOf(address(booster), SEASON_1);
+        uint256 user1BalanceAfter = fp.balanceOf(user1, SEASON_1);
+        uint256 user2BalanceAfter = fp.balanceOf(user2, SEASON_1);
+
+        console2.log("\nAfter refunds:");
+        console2.log("  Contract balance: %d", contractBalanceAfterRefunds);
+        console2.log("  User1 balance: %d", user1BalanceAfter);
+        console2.log("  User2 balance: %d", user2BalanceAfter);
+
+        // Verify refunds were paid correctly
+        assertEq(user1BalanceAfter, user1BalanceBefore + user1Stake, "User1 should receive refund");
+        assertEq(user2BalanceAfter, user2BalanceBefore + user2Stake, "User2 should receive refund");
+        assertEq(
+            contractBalanceAfterRefunds,
+            contractBalanceBefore - user1Stake - user2Stake,
+            "Contract should pay out stakes"
+        );
+
+        // STEP 3: Check fight.claimedAmount - BUG FIXED: should be updated now
+        (
+            ,,,
+            uint256 _bonusPool2,
+            uint256 _originalPool2,
+            uint256 _sumWinnersStakes2,
+            uint256 _winningPoolTotalShares2,
+            uint256 _pointsForWinner2,
+            uint256 _pointsForWinnerMethod2,
+            uint256 claimedAmountAfterRefunds,
+            uint256 _boostCutoff2,
+            bool _cancelled2
+        ) = booster.getFight(EVENT_1, FIGHT_1);
+
+        console2.log("\nBug Fix Verification:");
+        console2.log("  fight.claimedAmount after refunds: %d", claimedAmountAfterRefunds);
+        console2.log("  Expected (bug fixed): %d", user1Stake + user2Stake);
+        console2.log("  Actual refunds paid: %d", user1Stake + user2Stake);
+
+        // BUG FIXED: claimedAmount should now be updated correctly
+        assertEq(
+            claimedAmountAfterRefunds,
+            user1Stake + user2Stake,
+            "claimedAmount should be updated for cancelled fight refunds"
+        );
+
+        // STEP 4: Set claim deadline to enable purging
+        vm.prank(operator);
+        booster.setEventClaimDeadline(EVENT_1, block.timestamp + 1);
+
+        // Advance time past deadline
+        vm.warp(block.timestamp + 2);
+
+        // STEP 5: Attempt to purge - should succeed now that accounting is correct
+        console2.log("\nAttempting purgeEvent (should succeed):");
+        console2.log("  Remaining contract balance: %d", contractBalanceAfterRefunds);
+        console2.log("  purgeEvent will try to sweep: %d", totalPool - claimedAmountAfterRefunds);
+        console2.log("  Expected unclaimed: %d (bonus pool)", bonusAmount);
+
+        uint256 operatorBalanceBefore = fp.balanceOf(operator, SEASON_1);
+
+        // This should NOT revert because accounting is now correct
+        vm.prank(operator);
+        booster.purgeEvent(EVENT_1, operator);
+
+        uint256 operatorBalanceAfter = fp.balanceOf(operator, SEASON_1);
+
+        // Verify operator received the remaining bonus pool
+        assertEq(
+            operatorBalanceAfter - operatorBalanceBefore, bonusAmount, "Operator should receive remaining bonus pool"
+        );
     }
 }

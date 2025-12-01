@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import {Script, console2} from "forge-std/Script.sol";
-import {FP1155} from "src/FP1155.sol";
-import {Booster} from "src/Booster.sol";
+import { Script, console2 } from "forge-std/Script.sol";
+import { FP1155 } from "src/FP1155.sol";
+import { Booster } from "src/Booster.sol";
 
 /**
  * @title CreateEventAndSeed
@@ -86,7 +86,7 @@ contract CreateEventAndSeed is Script {
 
         // Create event (fights are sequential: 1, 2, 3, ..., numFights)
         uint256 numFights = P.fights.length;
-        booster.createEvent(eventId, numFights, seasonId);
+        booster.createEvent(eventId, numFights, seasonId, 0);
         console2.log("Created event with", numFights, "fights");
 
         // Optional deadline
@@ -101,7 +101,7 @@ contract CreateEventAndSeed is Script {
             for (uint256 i = 0; i < P.fights.length && i < P.bonusAmts.length; i++) {
                 uint256 amt = P.bonusAmts[i];
                 if (amt == 0) continue;
-                booster.depositBonus(eventId, P.fights[i], amt);
+                booster.depositBonus(eventId, P.fights[i], amt, false);
                 console2.log("Deposited bonus", amt, "for fight", P.fights[i]);
             }
         }

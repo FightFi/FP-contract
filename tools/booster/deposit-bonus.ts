@@ -36,7 +36,7 @@ import {
 } from "./booster.utils";
 
 const ABI = [
-  "function depositBonus(string calldata eventId, uint256 fightId, uint256 amount) external",
+  "function depositBonus(string calldata eventId, uint256 fightId, uint256 amount, bool force) external",
 ];
 
 async function main() {
@@ -57,6 +57,8 @@ async function main() {
   const amountBigInt = BigInt(amount);
   if (amountBigInt <= 0n) throw new Error("--amount must be > 0");
 
+  const force = args.force === "true" || args.force === "1";
+
   const booster = new ethers.Contract(config.contractAddress, ABI, config.wallet);
 
   // Format amount for display (convert from wei to FP)
@@ -67,13 +69,14 @@ async function main() {
     `Event ID: ${eventId}`,
     `Fight ID: ${fightId}`,
     `Amount: ${amountInFP} FP (${amountBigInt} wei)`,
+    `Force: ${force}`,
   ], "depositBonus");
 
   // Request confirmation
   await requestConfirmation(args);
 
   console.log("\n🚀 Executing transaction...");
-  const tx = await booster.depositBonus(eventId, fightId, amountBigInt);
+  const tx = await booster.depositBonus(eventId, fightId, amountBigInt, force);
   await waitForTransaction(tx, config.chainId);
 }
 
