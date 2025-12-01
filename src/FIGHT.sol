@@ -27,3 +27,8 @@ contract FIGHT is ERC20, Ownable {
 
 
 
+
+
+
+
+

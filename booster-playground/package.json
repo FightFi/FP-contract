@@ -15,6 +15,7 @@
     "claim": "ts-node src/claim.ts",
     "set-claim-ready": "ts-node src/set-claim-ready.ts",
     "get-event": "ts-node src/get-event.ts",
+    "check-roles": "ts-node src/check-roles.ts",
     "build": "tsc"
   },
   "keywords": [
