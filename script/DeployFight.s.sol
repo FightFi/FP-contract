@@ -2,7 +2,7 @@
 pragma solidity ^0.8.20;
 
 import {Script, console2} from "forge-std/Script.sol";
-import {FIGHT} from "src/FIGHT.sol";
+import {FIGHT} from "../test/mocks/FIGHT.sol";
 
 /**
  * @title DeployFight
