@@ -3,6 +3,7 @@
  *
  * @example Submit all fight results from JSON file (uses resolutions.json in same folder by default)
  * ts-node tools/booster/batch-submit/submit-batch-results.ts --network testnet
+ * ts-node tools/booster/batch-submit/submit-batch-results.ts --network mainnet
  *
  * @example Submit with custom file path
  * ts-node tools/booster/batch-submit/submit-batch-results.ts \
