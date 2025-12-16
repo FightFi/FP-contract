@@ -57,8 +57,8 @@ contract FP1155 is
     event SeasonStatusUpdated(uint256 indexed seasonId, SeasonStatus status);
     event AllowlistUpdated(address indexed account, bool allowed);
     event ClaimProcessed(address indexed account, uint256 indexed seasonId, uint256 amount, uint256 nonce);
-    event Burn(address indexed account, uint256 indexed seasonId, uint256 amount);
-    event BurnBatch(address indexed account, uint256[] seasonIds, uint256[] amounts);
+    event Burn(address indexed account, uint256 indexed seasonId, uint256 amount, uint256 timestamp);
+    event BurnBatch(address indexed account, uint256[] seasonIds, uint256[] amounts, uint256 timestamp);
 
     // ============ Initializer ============
     /// @custom:oz-upgrades-unsafe-allow constructor
@@ -233,26 +233,26 @@ contract FP1155 is
     // ============ Burn API ============
     /**
      * @notice Burns a specific amount of tokens from an account.
-     * @dev Overrides ERC1155BurnableUpgradeable to emit custom Burn event.
+     * @dev Overrides ERC1155BurnableUpgradeable to emit custom Burn event with timestamp.
      * @param account The account to burn tokens from
      * @param id The token ID (season) to burn
      * @param value The amount of tokens to burn
      */
     function burn(address account, uint256 id, uint256 value) public virtual override {
         super.burn(account, id, value);
-        emit Burn(account, id, value);
+        emit Burn(account, id, value, block.timestamp);
     }
 
     /**
      * @notice Burns multiple amounts of tokens from an account.
-     * @dev Overrides ERC1155BurnableUpgradeable to emit custom BurnBatch event.
+     * @dev Overrides ERC1155BurnableUpgradeable to emit custom BurnBatch event with timestamp.
      * @param account The account to burn tokens from
      * @param ids Array of token IDs (seasons) to burn
      * @param values Array of amounts to burn for each token ID
      */
     function burnBatch(address account, uint256[] memory ids, uint256[] memory values) public virtual override {
         super.burnBatch(account, ids, values);
-        emit BurnBatch(account, ids, values);
+        emit BurnBatch(account, ids, values, block.timestamp);
     }
 
     // ============ Transfer Guard ============
