@@ -501,9 +501,9 @@ contract FP1155Test is Test {
     function testBurnEventEmitted() public {
         // Mint tokens to alice first
         _mintToAlice(S1, 10);
-        // Expect Burn event with correct parameters
+        // Expect Burn event with correct parameters including timestamp
         vm.expectEmit(true, true, false, true);
-        emit FP1155.Burn(alice, S1, 5);
+        emit FP1155.Burn(alice, S1, 5, block.timestamp);
         vm.prank(alice);
         fp.burn(alice, S1, 5);
         // Verify balance was reduced
@@ -520,9 +520,9 @@ contract FP1155Test is Test {
         amts[1] = 20;
         vm.prank(minter);
         fp.mintBatch(alice, ids, amts, "");
-        // Expect BurnBatch event with correct parameters
+        // Expect BurnBatch event with correct parameters including timestamp
         vm.expectEmit(true, false, false, true);
-        emit FP1155.BurnBatch(alice, ids, amts);
+        emit FP1155.BurnBatch(alice, ids, amts, block.timestamp);
         vm.prank(alice);
         fp.burnBatch(alice, ids, amts);
         // Verify balances were reduced
@@ -538,7 +538,7 @@ contract FP1155Test is Test {
         fp.setSeasonStatus(S1, FP1155.SeasonStatus.LOCKED);
         // Burn should still emit event even when season is locked
         vm.expectEmit(true, true, false, true);
-        emit FP1155.Burn(alice, S1, 3);
+        emit FP1155.Burn(alice, S1, 3, block.timestamp);
         vm.prank(alice);
         fp.burn(alice, S1, 3);
         assertEq(fp.balanceOf(alice, S1), 7);
@@ -561,7 +561,7 @@ contract FP1155Test is Test {
         fp.setSeasonStatus(ids[1], FP1155.SeasonStatus.LOCKED);
         // BurnBatch should still emit event even when seasons are locked
         vm.expectEmit(true, false, false, true);
-        emit FP1155.BurnBatch(alice, ids, amts);
+        emit FP1155.BurnBatch(alice, ids, amts, block.timestamp);
         vm.prank(alice);
         fp.burnBatch(alice, ids, amts);
         assertEq(fp.balanceOf(alice, ids[0]), 0);
