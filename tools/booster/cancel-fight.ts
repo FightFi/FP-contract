@@ -3,6 +3,7 @@
  *
  * @example Cancel a single fight
  * ts-node tools/booster/cancel-fight.ts --network mainnet --eventId ufc-323 --fightId 1
+ * ts-node tools/booster/cancel-fight.ts --network mainnet --eventId ufc-fight-night-dec-13-2025 --fightId 2
  *
  * @example Cancel multiple fights (comma-separated)
  * ts-node tools/booster/cancel-fight.ts --network mainnet --eventId ufc-323 --fightIds 1,2,3
