@@ -39,10 +39,7 @@ contract DeployDailyLottery is Script {
         console.log("Implementation deployed at:", address(implementation));
 
         // Prepare initialization data
-        bytes memory initData = abi.encodeCall(
-            DailyLottery.initialize,
-            (fpTokenAddress, admin)
-        );
+        bytes memory initData = abi.encodeCall(DailyLottery.initialize, (fpTokenAddress, admin));
 
         // Deploy proxy
         ERC1967Proxy proxy = new ERC1967Proxy(address(implementation), initData);
@@ -70,7 +67,9 @@ contract DeployDailyLottery is Script {
         console.log("   To change defaults: DailyLottery.setDefaults(seasonId, entryPrice, maxEntriesPerUser)");
         console.log("\n4. To draw winner:");
         console.log("   - For FP: drawWinner(dayId, index, PrizeData(FP, address(0), seasonId, amount))");
-        console.log("   - For ERC20: approve token first, then drawWinner(dayId, index, PrizeData(ERC20, tokenAddr, 0, amount))");
+        console.log(
+            "   - For ERC20: approve token first, then drawWinner(dayId, index, PrizeData(ERC20, tokenAddr, 0, amount))"
+        );
     }
 }
 
@@ -124,7 +123,7 @@ contract SetupDailyLottery is Script {
         console.log("\nSetting approvals for FP token...");
         fpToken.setApprovalForAll(lotteryAddress, true);
         console.log("FP token approval set");
-        
+
         console.log("\nNote: Admin must approve each ERC20 prize token before drawing winners");
         console.log("Example: IERC20(prizeTokenAddress).approve(lotteryAddress, amount)");
 
@@ -147,7 +146,7 @@ contract SetDailyLotteryDefaults is Script {
         uint256 maxEntriesPerUser = vm.envOr("MAX_ENTRIES_PER_USER", uint256(5));
 
         uint256 adminPrivateKey = vm.envUint("PRIVATE_KEY");
-        
+
         vm.startBroadcast(adminPrivateKey);
 
         console.log("=== Setting Lottery Defaults ===");

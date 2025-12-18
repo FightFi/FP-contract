@@ -36,10 +36,9 @@ contract DailyLottery is
     bytes32 public constant FREE_ENTRY_SIGNER_ROLE = keccak256("FREE_ENTRY_SIGNER_ROLE");
 
     // ============ Constants ============
-    
+
     // EIP-712 typehash for free entry authorization
-    bytes32 public constant FREE_ENTRY_TYPEHASH = 
-        keccak256("FreeEntry(address account,uint256 dayId,uint256 nonce)");
+    bytes32 public constant FREE_ENTRY_TYPEHASH = keccak256("FreeEntry(address account,uint256 dayId,uint256 nonce)");
 
     // ============ Types ============
     enum PrizeType {
@@ -60,13 +59,18 @@ contract DailyLottery is
         uint256 entryPrice; // Price in FP to buy one entry (in FP token decimals, default 1)
         uint256 maxEntriesPerUser; // Maximum entries per user for this round (default 5)
         uint256 totalEntries; // Total number of entries
+        uint256 totalPaid; // Total FP tokens paid/burned for this round
         address winner; // Winner address (address(0) if not drawn yet) - packed with finalized
         bool finalized; // Whether the round has been finalized - packed with winner
+        PrizeType prizeType; // Type of prize awarded (FP or ERC20)
+        address prizeTokenAddress; // ERC20 token address (only for ERC20 prizes, address(0) for FP)
+        uint256 prizeSeasonId; // FP season ID (only for FP prizes, 0 for ERC20)
+        uint256 prizeAmount; // Amount of prize awarded
     }
 
     // ============ Storage ============
     FP1155 public fpToken; // FP1155 token contract
-    
+
     // Default values for auto-created rounds
     uint256 public defaultSeasonId; // Default season ID for FP
     uint256 public defaultEntryPrice; // Default entry price (1 by default)
@@ -80,25 +84,20 @@ contract DailyLottery is
 
     // Entry tickets: dayId => array of user addresses (one address per entry)
     mapping(uint256 => address[]) public entries;
-    
+
     // Nonces for free entry claims (per-user monotonically increasing nonce)
     mapping(address => uint256) public nonces;
 
     // ============ Events ============
-    event LotteryRoundCreated(
-        uint256 indexed dayId,
-        uint256 seasonId,
-        uint256 entryPrice,
-        uint256 maxEntriesPerUser
-    );
+    event LotteryRoundCreated(uint256 indexed dayId, uint256 seasonId, uint256 entryPrice, uint256 maxEntriesPerUser);
     event FreeEntryGranted(address indexed user, uint256 indexed dayId, uint256 nonce);
     event EntryPurchased(address indexed user, uint256 indexed dayId, uint256 entriesPurchased);
     event WinnerDrawn(
-        uint256 indexed dayId, 
-        address indexed winner, 
-        PrizeType prizeType, 
+        uint256 indexed dayId,
+        address indexed winner,
+        PrizeType prizeType,
         address tokenAddress, // ERC20 token address (address(0) for FP prizes)
-        uint256 seasonId,     // FP season ID (0 for ERC20 prizes)
+        uint256 seasonId, // FP season ID (0 for ERC20 prizes)
         uint256 amount
     );
     event DefaultsUpdated(uint256 seasonId, uint256 entryPrice, uint256 maxEntriesPerUser);
@@ -124,10 +123,7 @@ contract DailyLottery is
      * @param _fpToken Address of the FP1155 token contract
      * @param _admin Address of the admin
      */
-    function initialize(
-        address _fpToken,
-        address _admin
-    ) public initializer {
+    function initialize(address _fpToken, address _admin) public initializer {
         if (_fpToken == address(0) || _admin == address(0)) {
             revert InvalidAddress();
         }
@@ -143,7 +139,7 @@ contract DailyLottery is
         _grantRole(DEFAULT_ADMIN_ROLE, _admin);
         _grantRole(LOTTERY_ADMIN_ROLE, _admin);
         _grantRole(FREE_ENTRY_SIGNER_ROLE, _admin);
-        
+
         // Set default values for auto-created rounds
         defaultSeasonId = 1;
         defaultEntryPrice = 1;
@@ -154,7 +150,7 @@ contract DailyLottery is
     function _authorizeUpgrade(address newImplementation) internal override onlyRole(DEFAULT_ADMIN_ROLE) { }
 
     // ============ Admin Functions ============
-    
+
     /**
      * @notice Pause the lottery (stops users from participating)
      * @dev Admin can still draw winners for existing rounds while paused
@@ -169,7 +165,7 @@ contract DailyLottery is
     function unpause() external onlyRole(LOTTERY_ADMIN_ROLE) {
         _unpause();
     }
-    
+
     /**
      * @notice Set default values for auto-created lottery rounds
      * @param _defaultSeasonId Default season ID for FP
@@ -182,11 +178,11 @@ contract DailyLottery is
     {
         if (_defaultEntryPrice == 0) revert InvalidAmount();
         if (_defaultMaxEntriesPerUser == 0) revert InvalidAmount();
-        
+
         defaultSeasonId = _defaultSeasonId;
         defaultEntryPrice = _defaultEntryPrice;
         defaultMaxEntriesPerUser = _defaultMaxEntriesPerUser;
-        
+
         emit DefaultsUpdated(_defaultSeasonId, _defaultEntryPrice, _defaultMaxEntriesPerUser);
     }
 
@@ -201,13 +197,18 @@ contract DailyLottery is
             entryPrice: entryPrice,
             maxEntriesPerUser: maxEntriesPerUser,
             totalEntries: 0,
+            totalPaid: 0,
             winner: address(0),
-            finalized: false
+            finalized: false,
+            prizeType: PrizeType.FP, // Default, will be set when winner is drawn
+            prizeTokenAddress: address(0),
+            prizeSeasonId: 0,
+            prizeAmount: 0
         });
 
         emit LotteryRoundCreated(dayId, seasonId, entryPrice, maxEntriesPerUser);
     }
-    
+
     /**
      * @notice Ensure a lottery round exists for a specific day, creating it with defaults if needed
      * @param dayId Day identifier for the round
@@ -231,23 +232,19 @@ contract DailyLottery is
      *      For ERC20 prizes, any ERC20 token can be used (USDT, USDC, POL, etc.).
      *      For FP prizes, the seasonId is independent of the seasonId used for burning entry fees.
      */
-    function drawWinner(
-        uint256 dayId, 
-        uint256 winningIndex, 
-        PrizeData calldata prize
-    ) 
-        external 
-        onlyRole(LOTTERY_ADMIN_ROLE) 
-        nonReentrant 
+    function drawWinner(uint256 dayId, uint256 winningIndex, PrizeData calldata prize)
+        external
+        onlyRole(LOTTERY_ADMIN_ROLE)
+        nonReentrant
     {
         // Early validation of prize data (before storage access)
         if (prize.amount == 0) revert InvalidAmount();
         if (prize.prizeType == PrizeType.ERC20 && prize.tokenAddress == address(0)) {
             revert InvalidAddress();
         }
-        
+
         LotteryRound storage round = lotteryRounds[dayId];
-        
+
         if (round.dayId != dayId) revert LotteryNotActive();
         if (round.finalized) revert AlreadyFinalized();
         if (round.totalEntries == 0) revert NoEntries();
@@ -255,7 +252,7 @@ contract DailyLottery is
 
         // Get winner from entries array using the provided index
         address winner = entries[dayId][winningIndex];
-        
+
         // Validate winner address
         if (winner == address(0)) revert InvalidAddress();
 
@@ -269,6 +266,10 @@ contract DailyLottery is
         // Update state only after successful transfer (Effects after Interactions in this case)
         round.winner = winner;
         round.finalized = true;
+        round.prizeType = prize.prizeType;
+        round.prizeTokenAddress = prize.tokenAddress;
+        round.prizeSeasonId = prize.seasonId;
+        round.prizeAmount = prize.amount;
 
         emit WinnerDrawn(dayId, winner, prize.prizeType, prize.tokenAddress, prize.seasonId, prize.amount);
     }
@@ -286,25 +287,23 @@ contract DailyLottery is
     function claimFreeEntry(bytes calldata signature) external nonReentrant whenNotPaused {
         uint256 dayId = getCurrentDayId();
         LotteryRound storage round = lotteryRounds[dayId];
-        
+
         // Ensure round exists (auto-create if needed)
         _ensureRoundExists(dayId, round);
-        
+
         // Check lottery is active
         if (round.finalized) revert LotteryNotActive();
-        
+
         // Check that claiming free entry won't exceed maximum
         uint256 currentUserEntries = userEntries[dayId][msg.sender];
         if (currentUserEntries >= round.maxEntriesPerUser) revert MaxEntriesExceeded();
 
         // Verify signature for this specific day
         uint256 nonce = nonces[msg.sender];
-        bytes32 structHash = keccak256(
-            abi.encode(FREE_ENTRY_TYPEHASH, msg.sender, dayId, nonce)
-        );
+        bytes32 structHash = keccak256(abi.encode(FREE_ENTRY_TYPEHASH, msg.sender, dayId, nonce));
         bytes32 digest = _hashTypedDataV4(structHash);
         address signer = ECDSA.recover(digest, signature);
-        
+
         // Validate signer is not zero address (invalid signature)
         if (signer == address(0)) revert InvalidSigner();
         if (!hasRole(FREE_ENTRY_SIGNER_ROLE, signer)) revert InvalidSigner();
@@ -328,16 +327,16 @@ contract DailyLottery is
     function buyEntry() external nonReentrant whenNotPaused {
         uint256 dayId = getCurrentDayId();
         LotteryRound storage round = lotteryRounds[dayId];
-        
+
         // Ensure round exists (auto-create if needed)
         _ensureRoundExists(dayId, round);
-        
+
         // Check lottery is active
         if (round.finalized) revert LotteryNotActive();
-        
+
         // Check current entries
         uint256 currentEntries = userEntries[dayId][msg.sender];
-        
+
         // Check total entries won't exceed maximum
         if (currentEntries >= round.maxEntriesPerUser) revert MaxEntriesExceeded();
 
@@ -348,6 +347,7 @@ contract DailyLottery is
         userEntries[dayId][msg.sender] = currentEntries + 1;
         entries[dayId].push(msg.sender);
         round.totalEntries++;
+        round.totalPaid += round.entryPrice; // Track total FP tokens paid for this round
 
         emit EntryPurchased(msg.sender, dayId, 1);
     }
@@ -398,7 +398,7 @@ contract DailyLottery is
     function getCurrentDayId() public view returns (uint256) {
         return block.timestamp / 1 days;
     }
-    
+
     /**
      * @notice Get EIP-712 domain separator for client-side signing
      * @return Domain separator hash

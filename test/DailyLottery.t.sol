@@ -23,29 +23,24 @@ contract DailyLotteryTest is Test {
     address public user2;
     address public user3;
     address public freeEntrySigner;
-    
+
     uint256 public signerPk = 0xBEEF; // Test private key for free entry signer
 
     uint256 public constant SEASON_ID = 1;
     uint256 public constant INITIAL_FP_BALANCE = 100; // 100 FP per user (ERC1155 has no decimals)
     uint256 public constant PRIZE_AMOUNT_FP = 1000; // 1000 FP tokens (ERC1155 has no decimals)
     uint256 public constant PRIZE_AMOUNT_USDT = 1000; // 1000 USDT (no decimals)
-    
+
     // Mock USDT token for testing
     MockERC20 public mockUsdt;
 
-    event LotteryRoundCreated(
-        uint256 indexed dayId,
-        uint256 seasonId,
-        uint256 entryPrice,
-        uint256 maxEntriesPerUser
-    );
+    event LotteryRoundCreated(uint256 indexed dayId, uint256 seasonId, uint256 entryPrice, uint256 maxEntriesPerUser);
     event FreeEntryGranted(address indexed user, uint256 indexed dayId, uint256 nonce);
     event EntryPurchased(address indexed user, uint256 indexed dayId, uint256 entriesPurchased);
     event WinnerDrawn(
-        uint256 indexed dayId, 
-        address indexed winner, 
-        DailyLottery.PrizeType prizeType, 
+        uint256 indexed dayId,
+        address indexed winner,
+        DailyLottery.PrizeType prizeType,
         address tokenAddress,
         uint256 seasonId,
         uint256 amount
@@ -53,8 +48,8 @@ contract DailyLotteryTest is Test {
 
     function setUp() public {
         // Set realistic timestamp (January 1, 2024)
-        vm.warp(1704067200); // Unix timestamp for 2024-01-01 00:00:00 UTC
-        
+        vm.warp(1_704_067_200); // Unix timestamp for 2024-01-01 00:00:00 UTC
+
         admin = makeAddr("admin");
         user1 = makeAddr("user1");
         user2 = makeAddr("user2");
@@ -73,10 +68,7 @@ contract DailyLotteryTest is Test {
 
         // Deploy DailyLottery
         DailyLottery lotteryImpl = new DailyLottery();
-        bytes memory lotteryInitData = abi.encodeCall(
-            DailyLottery.initialize,
-            (address(fpToken), admin)
-        );
+        bytes memory lotteryInitData = abi.encodeCall(DailyLottery.initialize, (address(fpToken), admin));
         ERC1967Proxy lotteryProxy = new ERC1967Proxy(address(lotteryImpl), lotteryInitData);
         lottery = DailyLottery(address(lotteryProxy));
 
@@ -106,7 +98,7 @@ contract DailyLotteryTest is Test {
         fpToken.setApprovalForAll(address(lottery), true);
         vm.prank(user3);
         fpToken.setApprovalForAll(address(lottery), true);
-        
+
         vm.startPrank(admin);
         fpToken.setApprovalForAll(address(lottery), true);
         mockUsdt.approve(address(lottery), type(uint256).max);
@@ -125,21 +117,21 @@ contract DailyLotteryTest is Test {
 
     // ============ Lottery Round Auto-Creation Tests ============
     // createLotteryRound() function removed - rounds are auto-created when users participate
-    
+
     function test_AutoCreateRound() public {
         uint256 dayId = block.timestamp / 1 days;
-        
+
         // Round doesn't exist yet
         DailyLottery.LotteryRound memory roundBefore = lottery.getLotteryRound(dayId);
         assertEq(roundBefore.dayId, 0, "Round should not exist yet");
-        
+
         // User claims free entry - should auto-create round
         uint256 nonce = lottery.nonces(user1);
         bytes memory sig = _signFreeEntry(user1, dayId, nonce);
-        
+
         vm.prank(user1);
         vm.expectEmit(true, true, true, true);
-        emit LotteryRoundCreated(dayId, 1, 1, 5);  // Using defaults: season=1, price=1, max=5
+        emit LotteryRoundCreated(dayId, 1, 1, 5); // Using defaults: season=1, price=1, max=5
         lottery.claimFreeEntry(sig);
 
         // Round should now exist with defaults
@@ -149,37 +141,43 @@ contract DailyLotteryTest is Test {
         assertEq(round.entryPrice, 1, "Entry price should be default (1)");
         assertEq(round.maxEntriesPerUser, 5, "Max entries should be default (5)");
         assertEq(round.totalEntries, 1, "Should have 1 entry");
+        assertEq(round.totalPaid, 0, "Total paid should be 0 (free entry)");
+        // Verify prize fields are initialized with defaults
+        assertEq(uint256(round.prizeType), uint256(DailyLottery.PrizeType.FP), "Prize type should default to FP");
+        assertEq(round.prizeTokenAddress, address(0), "Prize token address should default to address(0)");
+        assertEq(round.prizeSeasonId, 0, "Prize season ID should default to 0");
+        assertEq(round.prizeAmount, 0, "Prize amount should default to 0");
     }
-    
+
     function test_SetDefaults() public {
         // Change defaults
         vm.prank(admin);
         lottery.setDefaults(2, 3, 10);
-        
+
         assertEq(lottery.defaultSeasonId(), 2, "Default season should be 2");
         assertEq(lottery.defaultEntryPrice(), 3, "Default entry price should be 3");
         assertEq(lottery.defaultMaxEntriesPerUser(), 10, "Default max entries should be 10");
-        
+
         // New round should use new defaults
         uint256 dayId = block.timestamp / 1 days;
         uint256 nonce = lottery.nonces(user1);
         bytes memory sig = _signFreeEntry(user1, dayId, nonce);
-        
+
         vm.prank(user1);
         lottery.claimFreeEntry(sig);
-        
+
         DailyLottery.LotteryRound memory round = lottery.getLotteryRound(dayId);
         assertEq(round.seasonId, 2, "Should use new default season");
         assertEq(round.entryPrice, 3, "Should use new default entry price");
         assertEq(round.maxEntriesPerUser, 10, "Should use new default max entries");
     }
-    
+
     function test_SetDefaults_RevertZeroEntryPrice() public {
         vm.prank(admin);
         vm.expectRevert(DailyLottery.InvalidAmount.selector);
         lottery.setDefaults(1, 0, 5);
     }
-    
+
     function test_SetDefaults_RevertZeroMaxEntries() public {
         vm.prank(admin);
         vm.expectRevert(DailyLottery.InvalidAmount.selector);
@@ -194,11 +192,7 @@ contract DailyLotteryTest is Test {
 
     // ============ Helper Functions for Signatures ============
 
-    function _signFreeEntry(address account, uint256 dayId, uint256 nonce)
-        internal
-        view
-        returns (bytes memory sig)
-    {
+    function _signFreeEntry(address account, uint256 dayId, uint256 nonce) internal view returns (bytes memory sig) {
         bytes32 typehash = lottery.FREE_ENTRY_TYPEHASH();
         bytes32 structHash = keccak256(abi.encode(typehash, account, dayId, nonce));
         bytes32 digest = MessageHashUtils.toTypedDataHash(lottery.DOMAIN_SEPARATOR(), structHash);
@@ -210,7 +204,7 @@ contract DailyLotteryTest is Test {
 
     function test_ClaimFreeEntry() public {
         uint256 dayId = block.timestamp / 1 days;
-        
+
         // Round will be auto-created when claiming free entry
 
         // Generate signature for free entry (specific to this day)
@@ -230,13 +224,13 @@ contract DailyLotteryTest is Test {
 
     function test_ClaimFreeEntry_RevertInvalidSignature() public {
         uint256 dayId = block.timestamp / 1 days;
-        
+
         // Round will be auto-created when claiming free entry
 
         // Generate signature with wrong private key (not the signer)
         uint256 wrongPk = 0xDEAD;
         uint256 nonce = lottery.nonces(user1);
-        
+
         bytes32 typehash = lottery.FREE_ENTRY_TYPEHASH();
         bytes32 structHash = keccak256(abi.encode(typehash, user1, dayId, nonce));
         bytes32 digest = MessageHashUtils.toTypedDataHash(lottery.DOMAIN_SEPARATOR(), structHash);
@@ -248,10 +242,10 @@ contract DailyLotteryTest is Test {
         vm.expectRevert(DailyLottery.InvalidSigner.selector);
         lottery.claimFreeEntry(badSig);
     }
-    
+
     function test_ClaimFreeEntry_RevertWrongDay() public {
         uint256 dayId = block.timestamp / 1 days;
-        
+
         // Round will auto-create when claiming
 
         // Generate signature for tomorrow (wrong day)
@@ -267,25 +261,25 @@ contract DailyLotteryTest is Test {
 
     function test_ClaimFreeEntry_Multiple() public {
         uint256 dayId = block.timestamp / 1 days;
-        
+
         // Round will be auto-created when claiming free entry
 
         // Claim first free entry
         uint256 nonce = lottery.nonces(user1);
         bytes memory sig = _signFreeEntry(user1, dayId, nonce);
-        
+
         vm.prank(user1);
         lottery.claimFreeEntry(sig);
-        
+
         assertEq(lottery.getUserEntries(dayId, user1), 1, "User should have 1 entry");
 
         // Claim second free entry with new signature (new nonce)
         uint256 newNonce = lottery.nonces(user1);
         bytes memory newSig = _signFreeEntry(user1, dayId, newNonce);
-        
+
         vm.prank(user1);
         lottery.claimFreeEntry(newSig);
-        
+
         assertEq(lottery.getUserEntries(dayId, user1), 2, "User should have 2 entries");
         assertEq(lottery.getTotalEntries(dayId), 2, "Total entries should be 2");
     }
@@ -294,7 +288,7 @@ contract DailyLotteryTest is Test {
 
     function test_BuyEntry() public {
         uint256 dayId = block.timestamp / 1 days;
-        
+
         // Round will be auto-created when claiming free entry
 
         // Claim free entry with signature
@@ -310,7 +304,7 @@ contract DailyLotteryTest is Test {
         vm.expectEmit(true, true, true, true);
         emit EntryPurchased(user1, dayId, 1);
         lottery.buyEntry();
-        
+
         vm.prank(user1);
         vm.expectEmit(true, true, true, true);
         emit EntryPurchased(user1, dayId, 1);
@@ -318,14 +312,18 @@ contract DailyLotteryTest is Test {
 
         assertEq(lottery.getUserEntries(dayId, user1), 3, "User should have 3 entries");
         assertEq(lottery.getTotalEntries(dayId), 3, "Total entries should be 3");
-        
+
         uint256 balanceAfter = fpToken.balanceOf(user1, SEASON_ID);
         assertEq(balanceBefore - balanceAfter, 2, "Should burn 2 FP (2 entries * 1 price)");
+
+        // Verify totalPaid tracks the paid entries (2 entries * 1 price = 2)
+        DailyLottery.LotteryRound memory round = lottery.getLotteryRound(dayId);
+        assertEq(round.totalPaid, 2, "Total paid should be 2 FP (2 entries purchased)");
     }
 
     function test_BuyEntry_MaxEntries() public {
         uint256 dayId = block.timestamp / 1 days;
-        
+
         // Round will be auto-created when claiming free entry
 
         // Buy maximum entries without free entry (5 total, one at a time)
@@ -335,7 +333,11 @@ contract DailyLotteryTest is Test {
         }
 
         assertEq(lottery.getUserEntries(dayId, user1), 5, "User should have 5 entries");
-        
+
+        // Verify totalPaid (5 entries * 1 price = 5)
+        DailyLottery.LotteryRound memory round = lottery.getLotteryRound(dayId);
+        assertEq(round.totalPaid, 5, "Total paid should be 5 FP (5 entries purchased)");
+
         // Try to claim free entry - should fail as already at max
         uint256 nonce = lottery.nonces(user1);
         bytes memory sig = _signFreeEntry(user1, dayId, nonce);
@@ -346,7 +348,7 @@ contract DailyLotteryTest is Test {
 
     function test_BuyEntry_RevertAtMaximum() public {
         uint256 dayId = block.timestamp / 1 days;
-        
+
         // Round will be auto-created when claiming free entry
 
         // Buy 5 entries (maximum)
@@ -354,9 +356,9 @@ contract DailyLotteryTest is Test {
             vm.prank(user1);
             lottery.buyEntry();
         }
-        
+
         assertEq(lottery.getUserEntries(dayId, user1), 5, "User should have 5 entries");
-        
+
         // Try to buy one more - should fail
         vm.prank(user1);
         vm.expectRevert(DailyLottery.MaxEntriesExceeded.selector);
@@ -365,7 +367,7 @@ contract DailyLotteryTest is Test {
 
     function test_BuyEntry_RevertExceedsMaximum() public {
         uint256 dayId = block.timestamp / 1 days;
-        
+
         // Round will be auto-created when claiming free entry
 
         // Claim free entry with signature
@@ -379,7 +381,7 @@ contract DailyLotteryTest is Test {
             vm.prank(user1);
             lottery.buyEntry();
         }
-        
+
         // Try to buy one more entry - should fail as already at max
         vm.prank(user1);
         vm.expectRevert(DailyLottery.MaxEntriesExceeded.selector);
@@ -388,7 +390,7 @@ contract DailyLotteryTest is Test {
 
     function test_BuyEntry_WithoutFreeEntry() public {
         uint256 dayId = block.timestamp / 1 days;
-        
+
         // Round will be auto-created when claiming free entry
 
         // User can buy entries without claiming free entry first (3 entries, one at a time)
@@ -398,7 +400,11 @@ contract DailyLotteryTest is Test {
         }
 
         assertEq(lottery.getUserEntries(dayId, user1), 3, "User should have 3 entries");
-        
+
+        // Verify totalPaid (3 entries * 1 price = 3)
+        DailyLottery.LotteryRound memory round = lottery.getLotteryRound(dayId);
+        assertEq(round.totalPaid, 3, "Total paid should be 3 FP (3 entries purchased)");
+
         // User can still claim free entry later
         uint256 nonce = lottery.nonces(user1);
         bytes memory sig = _signFreeEntry(user1, dayId, nonce);
@@ -407,10 +413,10 @@ contract DailyLotteryTest is Test {
 
         assertEq(lottery.getUserEntries(dayId, user1), 4, "User should have 4 entries total");
     }
-    
+
     function test_FreeEntry_AfterBuying() public {
         uint256 dayId = block.timestamp / 1 days;
-        
+
         // Round will be auto-created when claiming free entry
 
         // User buys 2 entries first (one at a time)
@@ -432,7 +438,7 @@ contract DailyLotteryTest is Test {
         lottery.buyEntry();
 
         assertEq(lottery.getUserEntries(dayId, user1), 5, "User should have 5 entries total");
-        
+
         // Try to buy more - should fail
         vm.prank(user1);
         vm.expectRevert(DailyLottery.MaxEntriesExceeded.selector);
@@ -443,26 +449,23 @@ contract DailyLotteryTest is Test {
 
     function test_DrawWinner_FP() public {
         uint256 dayId = block.timestamp / 1 days;
-        
+
         // Round will be auto-created when claiming free entry
 
         // Setup users with entries
         setupThreeUsersWithEntries();
 
         uint256 winningIndex = 0; // Pick first entry for testing
-        
+
         address expectedWinner = lottery.getEntries(dayId)[winningIndex];
         uint256 winnerBalanceBefore = fpToken.balanceOf(expectedWinner, SEASON_ID);
         uint256 adminBalanceBefore = fpToken.balanceOf(admin, SEASON_ID);
-        
+
         // Draw winner (admin transfers prize directly)
         DailyLottery.PrizeData memory prize = DailyLottery.PrizeData({
-            prizeType: DailyLottery.PrizeType.FP,
-            tokenAddress: address(0),
-            seasonId: SEASON_ID,
-            amount: PRIZE_AMOUNT_FP
+            prizeType: DailyLottery.PrizeType.FP, tokenAddress: address(0), seasonId: SEASON_ID, amount: PRIZE_AMOUNT_FP
         });
-        
+
         vm.prank(admin);
         lottery.drawWinner(dayId, winningIndex, prize);
 
@@ -470,7 +473,13 @@ contract DailyLotteryTest is Test {
         assertTrue(round.finalized, "Round should be finalized");
         assertTrue(round.winner != address(0), "Winner should be set");
         assertEq(round.winner, expectedWinner, "Winner should match entry at index");
-        
+
+        // Verify prize data is stored
+        assertEq(uint256(round.prizeType), uint256(DailyLottery.PrizeType.FP), "Prize type should be FP");
+        assertEq(round.prizeTokenAddress, address(0), "Prize token address should be address(0) for FP");
+        assertEq(round.prizeSeasonId, SEASON_ID, "Prize season ID should match");
+        assertEq(round.prizeAmount, PRIZE_AMOUNT_FP, "Prize amount should match");
+
         // Verify prize was transferred from admin to winner
         uint256 winnerBalanceAfter = fpToken.balanceOf(expectedWinner, SEASON_ID);
         uint256 adminBalanceAfter = fpToken.balanceOf(admin, SEASON_ID);
@@ -480,31 +489,34 @@ contract DailyLotteryTest is Test {
 
     function test_DrawWinner_ERC20() public {
         uint256 dayId = block.timestamp / 1 days;
-        
+
         // Setup users with entries (round will auto-create)
         setupThreeUsersWithEntries();
 
         uint256 winningIndex = 2; // Pick third entry for testing
-        
+
         address expectedWinner = lottery.getEntries(dayId)[winningIndex];
         uint256 winnerBalanceBefore = usdt.balanceOf(expectedWinner);
         uint256 adminBalanceBefore = usdt.balanceOf(admin);
-        
+
         // Draw winner (admin transfers ERC20 prize directly)
         DailyLottery.PrizeData memory prize = DailyLottery.PrizeData({
-            prizeType: DailyLottery.PrizeType.ERC20,
-            tokenAddress: address(usdt),
-            seasonId: 0,
-            amount: PRIZE_AMOUNT_USDT
+            prizeType: DailyLottery.PrizeType.ERC20, tokenAddress: address(usdt), seasonId: 0, amount: PRIZE_AMOUNT_USDT
         });
-        
+
         vm.prank(admin);
         lottery.drawWinner(dayId, winningIndex, prize);
 
         DailyLottery.LotteryRound memory round = lottery.getLotteryRound(dayId);
         assertTrue(round.finalized, "Round should be finalized");
         assertEq(round.winner, expectedWinner, "Winner should match entry at index");
-        
+
+        // Verify prize data is stored
+        assertEq(uint256(round.prizeType), uint256(DailyLottery.PrizeType.ERC20), "Prize type should be ERC20");
+        assertEq(round.prizeTokenAddress, address(usdt), "Prize token address should be USDT address");
+        assertEq(round.prizeSeasonId, 0, "Prize season ID should be 0 for ERC20");
+        assertEq(round.prizeAmount, PRIZE_AMOUNT_USDT, "Prize amount should match");
+
         // Verify ERC20 prize was transferred from admin to winner
         uint256 winnerBalanceAfter = usdt.balanceOf(expectedWinner);
         uint256 adminBalanceAfter = usdt.balanceOf(admin);
@@ -514,16 +526,13 @@ contract DailyLotteryTest is Test {
 
     function test_DrawWinner_RevertNoEntries() public {
         uint256 dayId = block.timestamp / 1 days;
-        
+
         // Round doesn't exist yet (not auto-created since no user participated)
         // Expect LotteryNotActive error instead of NoEntries
         DailyLottery.PrizeData memory prize = DailyLottery.PrizeData({
-            prizeType: DailyLottery.PrizeType.FP,
-            tokenAddress: address(0),
-            seasonId: SEASON_ID,
-            amount: PRIZE_AMOUNT_FP
+            prizeType: DailyLottery.PrizeType.FP, tokenAddress: address(0), seasonId: SEASON_ID, amount: PRIZE_AMOUNT_FP
         });
-        
+
         vm.prank(admin);
         vm.expectRevert(DailyLottery.LotteryNotActive.selector);
         lottery.drawWinner(dayId, 0, prize);
@@ -531,7 +540,7 @@ contract DailyLotteryTest is Test {
 
     function test_DrawWinner_RevertAlreadyFinalized() public {
         uint256 dayId = block.timestamp / 1 days;
-        
+
         // Round will be auto-created when claiming free entry
 
         // Setup users with entries
@@ -539,12 +548,9 @@ contract DailyLotteryTest is Test {
 
         // Draw winner
         DailyLottery.PrizeData memory prize = DailyLottery.PrizeData({
-            prizeType: DailyLottery.PrizeType.FP,
-            tokenAddress: address(0),
-            seasonId: SEASON_ID,
-            amount: PRIZE_AMOUNT_FP
+            prizeType: DailyLottery.PrizeType.FP, tokenAddress: address(0), seasonId: SEASON_ID, amount: PRIZE_AMOUNT_FP
         });
-        
+
         vm.prank(admin);
         lottery.drawWinner(dayId, 0, prize);
 
@@ -556,22 +562,19 @@ contract DailyLotteryTest is Test {
 
     function test_DrawWinner_RevertInvalidIndex() public {
         uint256 dayId = block.timestamp / 1 days;
-        
+
         // Round will be auto-created when claiming free entry
 
         // Setup users with entries (6 total entries)
         setupThreeUsersWithEntries();
 
         uint256 totalEntries = lottery.getTotalEntries(dayId);
-        
+
         // Try to draw with invalid index (>= totalEntries)
         DailyLottery.PrizeData memory prize = DailyLottery.PrizeData({
-            prizeType: DailyLottery.PrizeType.FP,
-            tokenAddress: address(0),
-            seasonId: SEASON_ID,
-            amount: PRIZE_AMOUNT_FP
+            prizeType: DailyLottery.PrizeType.FP, tokenAddress: address(0), seasonId: SEASON_ID, amount: PRIZE_AMOUNT_FP
         });
-        
+
         vm.prank(admin);
         vm.expectRevert(DailyLottery.InvalidAmount.selector);
         lottery.drawWinner(dayId, totalEntries, prize); // Index starts at 0, so totalEntries is out of bounds
@@ -581,17 +584,14 @@ contract DailyLotteryTest is Test {
 
     function test_MultipleDays() public {
         uint256 day1 = block.timestamp / 1 days;
-        
+
         // Day 1 lottery (auto-created when users participate)
         setupThreeUsersWithEntries();
 
         DailyLottery.PrizeData memory prize = DailyLottery.PrizeData({
-            prizeType: DailyLottery.PrizeType.FP,
-            tokenAddress: address(0),
-            seasonId: SEASON_ID,
-            amount: PRIZE_AMOUNT_FP
+            prizeType: DailyLottery.PrizeType.FP, tokenAddress: address(0), seasonId: SEASON_ID, amount: PRIZE_AMOUNT_FP
         });
-        
+
         vm.prank(admin);
         lottery.drawWinner(day1, 0, prize);
 
@@ -607,7 +607,9 @@ contract DailyLotteryTest is Test {
         lottery.claimFreeEntry(sig);
 
         assertEq(lottery.getUserEntries(day2, user1), 1, "User should have 1 entry on day 2");
-        assertEq(lottery.getUserEntries(day1, user1), 3, "User should still have 3 entries from day 1 (separate from day 2)");
+        assertEq(
+            lottery.getUserEntries(day1, user1), 3, "User should still have 3 entries from day 1 (separate from day 2)"
+        );
     }
 
     // ============ View Function Tests ============
@@ -619,7 +621,7 @@ contract DailyLotteryTest is Test {
 
     function test_GetEntries() public {
         uint256 dayId = block.timestamp / 1 days;
-        
+
         // Round will be auto-created when claiming free entry
 
         // Add entries from multiple users
@@ -641,18 +643,18 @@ contract DailyLotteryTest is Test {
 
     function setupThreeUsersWithEntries() internal {
         uint256 dayId = block.timestamp / 1 days;
-        
+
         // Claim free entries with signatures
         uint256 nonce1 = lottery.nonces(user1);
         bytes memory sig1 = _signFreeEntry(user1, dayId, nonce1);
         vm.prank(user1);
         lottery.claimFreeEntry(sig1);
-        
+
         uint256 nonce2 = lottery.nonces(user2);
         bytes memory sig2 = _signFreeEntry(user2, dayId, nonce2);
         vm.prank(user2);
         lottery.claimFreeEntry(sig2);
-        
+
         uint256 nonce3 = lottery.nonces(user3);
         bytes memory sig3 = _signFreeEntry(user3, dayId, nonce3);
         vm.prank(user3);
@@ -682,7 +684,7 @@ contract DailyLotteryTest is Test {
         uint256 dayId = block.timestamp / 1 days;
         uint256 nonce = lottery.nonces(user1);
         bytes memory sig = _signFreeEntry(user1, dayId, nonce);
-        
+
         vm.prank(user1);
         vm.expectRevert();
         lottery.claimFreeEntry(sig);
@@ -704,7 +706,7 @@ contract DailyLotteryTest is Test {
         uint256 dayId = block.timestamp / 1 days;
         uint256 nonce = lottery.nonces(user1);
         bytes memory sig = _signFreeEntry(user1, dayId, nonce);
-        
+
         vm.prank(user1);
         lottery.claimFreeEntry(sig);
 
@@ -725,7 +727,7 @@ contract DailyLotteryTest is Test {
     function test_Unpause_RevertUnauthorized() public {
         vm.prank(admin);
         lottery.pause();
-        
+
         vm.prank(user1);
         vm.expectRevert();
         lottery.unpause();
@@ -733,77 +735,71 @@ contract DailyLotteryTest is Test {
 
     function test_DrawWinner_DifferentERC20Tokens() public {
         uint256 dayId = block.timestamp / 1 days;
-        
+
         // Setup users with entries (round will auto-create)
         setupThreeUsersWithEntries();
 
         // Deploy a second ERC20 token (e.g., USDC)
         MockERC20 mockUsdc = new MockERC20("Mock USDC", "USDC", 6);
         IERC20 usdc = IERC20(address(mockUsdc));
-        
+
         // Mint USDC to admin
-        mockUsdc.mint(admin, 1000 * 10**6); // 1000 USDC with 6 decimals
-        
+        mockUsdc.mint(admin, 1000 * 10 ** 6); // 1000 USDC with 6 decimals
+
         // Approve USDC for lottery
         vm.prank(admin);
         usdc.approve(address(lottery), type(uint256).max);
 
         uint256 winningIndex = 1;
         address expectedWinner = lottery.getEntries(dayId)[winningIndex];
-        
+
         // Draw winner with USDC (different from the USDT in setUp)
-        uint256 usdcPrizeAmount = 500 * 10**6; // 500 USDC
+        uint256 usdcPrizeAmount = 500 * 10 ** 6; // 500 USDC
         uint256 winnerBalanceBefore = usdc.balanceOf(expectedWinner);
-        
+
         DailyLottery.PrizeData memory usdcPrize = DailyLottery.PrizeData({
-            prizeType: DailyLottery.PrizeType.ERC20,
-            tokenAddress: address(usdc),
-            seasonId: 0,
-            amount: usdcPrizeAmount
+            prizeType: DailyLottery.PrizeType.ERC20, tokenAddress: address(usdc), seasonId: 0, amount: usdcPrizeAmount
         });
-        
+
         vm.prank(admin);
         lottery.drawWinner(dayId, winningIndex, usdcPrize);
 
         // Verify USDC prize was transferred
         uint256 winnerBalanceAfter = usdc.balanceOf(expectedWinner);
         assertEq(winnerBalanceAfter - winnerBalanceBefore, usdcPrizeAmount, "Winner should have received USDC");
-        
+
         // Move to next day and test with yet another token
         vm.warp(block.timestamp + 1 days);
         uint256 day2 = lottery.getCurrentDayId();
-        
+
         // User claims entry for day 2
         uint256 nonce = lottery.nonces(user1);
         bytes memory sig = _signFreeEntry(user1, day2, nonce);
         vm.prank(user1);
         lottery.claimFreeEntry(sig);
-        
+
         // Deploy another ERC20 token (e.g., POL)
         MockERC20 mockPol = new MockERC20("Mock POL", "POL", 18);
         IERC20 pol = IERC20(address(mockPol));
-        
+
         // Mint POL to admin
-        mockPol.mint(admin, 10000 ether);
-        
+        mockPol.mint(admin, 10_000 ether);
+
         // Approve POL for lottery
         vm.prank(admin);
         pol.approve(address(lottery), type(uint256).max);
-        
+
         // Draw winner with POL on day 2
         uint256 polPrizeAmount = 1000 ether;
         uint256 user1BalanceBefore = pol.balanceOf(user1);
-        
+
         DailyLottery.PrizeData memory polPrize = DailyLottery.PrizeData({
-            prizeType: DailyLottery.PrizeType.ERC20,
-            tokenAddress: address(pol),
-            seasonId: 0,
-            amount: polPrizeAmount
+            prizeType: DailyLottery.PrizeType.ERC20, tokenAddress: address(pol), seasonId: 0, amount: polPrizeAmount
         });
-        
+
         vm.prank(admin);
         lottery.drawWinner(day2, 0, polPrize);
-        
+
         // Verify POL prize was transferred
         uint256 user1BalanceAfter = pol.balanceOf(user1);
         assertEq(user1BalanceAfter - user1BalanceBefore, polPrizeAmount, "Winner should have received POL");
@@ -811,7 +807,7 @@ contract DailyLotteryTest is Test {
 
     function test_DrawWinner_WorksWhilePaused() public {
         uint256 dayId = block.timestamp / 1 days;
-        
+
         // User claims free entry
         uint256 nonce = lottery.nonces(user1);
         bytes memory sig = _signFreeEntry(user1, dayId, nonce);
@@ -824,18 +820,15 @@ contract DailyLotteryTest is Test {
 
         // Admin should still be able to draw winner while paused
         uint256 winningIndex = 0;
-        
+
         // Approve ERC20 token for prize
         vm.prank(admin);
         usdt.approve(address(lottery), PRIZE_AMOUNT_USDT);
 
         DailyLottery.PrizeData memory prize = DailyLottery.PrizeData({
-            prizeType: DailyLottery.PrizeType.ERC20,
-            tokenAddress: address(usdt),
-            seasonId: 0,
-            amount: PRIZE_AMOUNT_USDT
+            prizeType: DailyLottery.PrizeType.ERC20, tokenAddress: address(usdt), seasonId: 0, amount: PRIZE_AMOUNT_USDT
         });
-        
+
         vm.prank(admin);
         vm.expectEmit(true, true, true, true);
         emit WinnerDrawn(dayId, user1, DailyLottery.PrizeType.ERC20, address(usdt), 0, PRIZE_AMOUNT_USDT);
@@ -925,5 +918,4 @@ contract MockERC20 is IERC20 {
         }
     }
 }
-
 
