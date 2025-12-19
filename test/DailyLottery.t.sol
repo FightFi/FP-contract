@@ -34,7 +34,13 @@ contract DailyLotteryTest is Test {
     // Mock USDT token for testing
     MockERC20 public mockUsdt;
 
-    event LotteryRoundCreated(uint256 indexed dayId, uint256 seasonId, uint256 entryPrice, uint256 maxEntriesPerUser);
+    event LotteryRoundCreated(
+        uint256 indexed dayId,
+        uint256 seasonId,
+        uint256 entryPrice,
+        uint256 maxEntriesPerUser,
+        uint256 maxFreeEntriesPerUser
+    );
     event FreeEntryGranted(address indexed user, uint256 indexed dayId, uint256 nonce);
     event EntryPurchased(address indexed user, uint256 indexed dayId, uint256 entriesPurchased);
     event WinnerDrawn(
@@ -44,6 +50,12 @@ contract DailyLotteryTest is Test {
         address tokenAddress,
         uint256 seasonId,
         uint256 amount
+    );
+    event DefaultsUpdated(
+        uint256 seasonId,
+        uint256 entryPrice,
+        uint256 maxEntriesPerUser,
+        uint256 maxFreeEntriesPerUser
     );
 
     function setUp() public {
@@ -113,6 +125,7 @@ contract DailyLotteryTest is Test {
         assertEq(lottery.defaultSeasonId(), 1, "Default season ID should be 1");
         assertEq(lottery.defaultEntryPrice(), 1, "Default entry price should be 1");
         assertEq(lottery.defaultMaxEntriesPerUser(), 5, "Default max entries should be 5");
+        assertEq(lottery.defaultMaxFreeEntriesPerUser(), 1, "Default max free entries should be 1");
     }
 
     // ============ Lottery Round Auto-Creation Tests ============
@@ -126,12 +139,12 @@ contract DailyLotteryTest is Test {
         assertEq(roundBefore.dayId, 0, "Round should not exist yet");
 
         // User claims free entry - should auto-create round
-        uint256 nonce = lottery.nonces(user1);
+        uint256 nonce = lottery.getUserNonce(dayId, user1);
         bytes memory sig = _signFreeEntry(user1, dayId, nonce);
 
         vm.prank(user1);
         vm.expectEmit(true, true, true, true);
-        emit LotteryRoundCreated(dayId, 1, 1, 5); // Using defaults: season=1, price=1, max=5
+        emit LotteryRoundCreated(dayId, 1, 1, 5, 1); // Using defaults: season=1, price=1, max=5, maxFree=1
         lottery.claimFreeEntry(sig);
 
         // Round should now exist with defaults
@@ -152,15 +165,16 @@ contract DailyLotteryTest is Test {
     function test_SetDefaults() public {
         // Change defaults
         vm.prank(admin);
-        lottery.setDefaults(2, 3, 10);
+        lottery.setDefaults(2, 3, 10, 2);
 
         assertEq(lottery.defaultSeasonId(), 2, "Default season should be 2");
         assertEq(lottery.defaultEntryPrice(), 3, "Default entry price should be 3");
         assertEq(lottery.defaultMaxEntriesPerUser(), 10, "Default max entries should be 10");
+        assertEq(lottery.defaultMaxFreeEntriesPerUser(), 2, "Default max free entries should be 2");
 
         // New round should use new defaults
         uint256 dayId = block.timestamp / 1 days;
-        uint256 nonce = lottery.nonces(user1);
+        uint256 nonce = lottery.getUserNonce(dayId, user1);
         bytes memory sig = _signFreeEntry(user1, dayId, nonce);
 
         vm.prank(user1);
@@ -170,24 +184,37 @@ contract DailyLotteryTest is Test {
         assertEq(round.seasonId, 2, "Should use new default season");
         assertEq(round.entryPrice, 3, "Should use new default entry price");
         assertEq(round.maxEntriesPerUser, 10, "Should use new default max entries");
+        assertEq(round.maxFreeEntriesPerUser, 2, "Should use new default max free entries");
     }
 
     function test_SetDefaults_RevertZeroEntryPrice() public {
         vm.prank(admin);
         vm.expectRevert(DailyLottery.InvalidAmount.selector);
-        lottery.setDefaults(1, 0, 5);
+        lottery.setDefaults(1, 0, 5, 1);
     }
 
     function test_SetDefaults_RevertZeroMaxEntries() public {
         vm.prank(admin);
         vm.expectRevert(DailyLottery.InvalidAmount.selector);
-        lottery.setDefaults(1, 1, 0);
+        lottery.setDefaults(1, 1, 0, 1);
+    }
+
+    function test_SetDefaults_RevertZeroMaxFreeEntries() public {
+        vm.prank(admin);
+        vm.expectRevert(DailyLottery.InvalidAmount.selector);
+        lottery.setDefaults(1, 1, 5, 0);
+    }
+
+    function test_SetDefaults_RevertMaxFreeExceedsMax() public {
+        vm.prank(admin);
+        vm.expectRevert(DailyLottery.InvalidAmount.selector);
+        lottery.setDefaults(1, 1, 5, 6); // maxFree > maxEntries
     }
 
     function test_SetDefaults_RevertUnauthorized() public {
         vm.prank(user1);
         vm.expectRevert();
-        lottery.setDefaults(SEASON_ID, 1, 5);
+        lottery.setDefaults(SEASON_ID, 1, 5, 1);
     }
 
     // ============ Helper Functions for Signatures ============
@@ -208,7 +235,7 @@ contract DailyLotteryTest is Test {
         // Round will be auto-created when claiming free entry
 
         // Generate signature for free entry (specific to this day)
-        uint256 nonce = lottery.nonces(user1);
+        uint256 nonce = lottery.getUserNonce(dayId, user1);
         bytes memory sig = _signFreeEntry(user1, dayId, nonce);
 
         // Claim free entry with signature
@@ -219,7 +246,7 @@ contract DailyLotteryTest is Test {
 
         assertEq(lottery.getUserEntries(dayId, user1), 1, "User should have 1 entry");
         assertEq(lottery.getTotalEntries(dayId), 1, "Total entries should be 1");
-        assertEq(lottery.nonces(user1), nonce + 1, "Nonce should increment");
+        assertEq(lottery.getUserNonce(dayId, user1), nonce + 1, "Nonce should increment");
     }
 
     function test_ClaimFreeEntry_RevertInvalidSignature() public {
@@ -229,7 +256,7 @@ contract DailyLotteryTest is Test {
 
         // Generate signature with wrong private key (not the signer)
         uint256 wrongPk = 0xDEAD;
-        uint256 nonce = lottery.nonces(user1);
+        uint256 nonce = lottery.getUserNonce(dayId, user1);
 
         bytes32 typehash = lottery.FREE_ENTRY_TYPEHASH();
         bytes32 structHash = keccak256(abi.encode(typehash, user1, dayId, nonce));
@@ -250,7 +277,7 @@ contract DailyLotteryTest is Test {
 
         // Generate signature for tomorrow (wrong day)
         uint256 wrongDayId = dayId + 1;
-        uint256 nonce = lottery.nonces(user1);
+        uint256 nonce = lottery.getUserNonce(wrongDayId, user1);
         bytes memory sig = _signFreeEntry(user1, wrongDayId, nonce);
 
         // Try to claim with signature for wrong day
@@ -260,12 +287,16 @@ contract DailyLotteryTest is Test {
     }
 
     function test_ClaimFreeEntry_Multiple() public {
+        // Change defaults to allow 2 free entries
+        vm.prank(admin);
+        lottery.setDefaults(1, 1, 5, 2);
+
         uint256 dayId = block.timestamp / 1 days;
 
         // Round will be auto-created when claiming free entry
 
         // Claim first free entry
-        uint256 nonce = lottery.nonces(user1);
+        uint256 nonce = lottery.getUserNonce(dayId, user1);
         bytes memory sig = _signFreeEntry(user1, dayId, nonce);
 
         vm.prank(user1);
@@ -274,7 +305,7 @@ contract DailyLotteryTest is Test {
         assertEq(lottery.getUserEntries(dayId, user1), 1, "User should have 1 entry");
 
         // Claim second free entry with new signature (new nonce)
-        uint256 newNonce = lottery.nonces(user1);
+        uint256 newNonce = lottery.getUserNonce(dayId, user1);
         bytes memory newSig = _signFreeEntry(user1, dayId, newNonce);
 
         vm.prank(user1);
@@ -282,6 +313,47 @@ contract DailyLotteryTest is Test {
 
         assertEq(lottery.getUserEntries(dayId, user1), 2, "User should have 2 entries");
         assertEq(lottery.getTotalEntries(dayId), 2, "Total entries should be 2");
+    }
+
+    function test_ClaimFreeEntry_RevertMaxFreeEntriesExceeded() public {
+        uint256 dayId = block.timestamp / 1 days;
+
+        // Claim first free entry (default max is 1)
+        uint256 nonce = lottery.getUserNonce(dayId, user1);
+        bytes memory sig = _signFreeEntry(user1, dayId, nonce);
+
+        vm.prank(user1);
+        lottery.claimFreeEntry(sig);
+
+        assertEq(lottery.getUserEntries(dayId, user1), 1, "User should have 1 entry");
+        assertEq(lottery.getUserNonce(dayId, user1), 1, "Nonce should be 1");
+
+        // Try to claim second free entry - should fail as max is 1
+        uint256 newNonce = lottery.getUserNonce(dayId, user1);
+        bytes memory newSig = _signFreeEntry(user1, dayId, newNonce);
+
+        vm.prank(user1);
+        vm.expectRevert(DailyLottery.MaxFreeEntriesExceeded.selector);
+        lottery.claimFreeEntry(newSig);
+    }
+
+    function test_ClaimFreeEntry_CanBuyAfterMaxFreeEntries() public {
+        uint256 dayId = block.timestamp / 1 days;
+
+        // Claim free entry (reaches max free entries of 1)
+        uint256 nonce = lottery.getUserNonce(dayId, user1);
+        bytes memory sig = _signFreeEntry(user1, dayId, nonce);
+
+        vm.prank(user1);
+        lottery.claimFreeEntry(sig);
+
+        assertEq(lottery.getUserEntries(dayId, user1), 1, "User should have 1 entry");
+
+        // User can still buy entries after reaching max free entries
+        vm.prank(user1);
+        lottery.buyEntry();
+
+        assertEq(lottery.getUserEntries(dayId, user1), 2, "User should have 2 entries total");
     }
 
     // ============ Buy Entries Tests ============
@@ -292,7 +364,7 @@ contract DailyLotteryTest is Test {
         // Round will be auto-created when claiming free entry
 
         // Claim free entry with signature
-        uint256 nonce = lottery.nonces(user1);
+        uint256 nonce = lottery.getUserNonce(dayId, user1);
         bytes memory sig = _signFreeEntry(user1, dayId, nonce);
         vm.prank(user1);
         lottery.claimFreeEntry(sig);
@@ -339,7 +411,7 @@ contract DailyLotteryTest is Test {
         assertEq(round.totalPaid, 5, "Total paid should be 5 FP (5 entries purchased)");
 
         // Try to claim free entry - should fail as already at max
-        uint256 nonce = lottery.nonces(user1);
+        uint256 nonce = lottery.getUserNonce(dayId, user1);
         bytes memory sig = _signFreeEntry(user1, dayId, nonce);
         vm.prank(user1);
         vm.expectRevert(DailyLottery.MaxEntriesExceeded.selector);
@@ -371,7 +443,7 @@ contract DailyLotteryTest is Test {
         // Round will be auto-created when claiming free entry
 
         // Claim free entry with signature
-        uint256 nonce = lottery.nonces(user1);
+        uint256 nonce = lottery.getUserNonce(dayId, user1);
         bytes memory sig = _signFreeEntry(user1, dayId, nonce);
         vm.prank(user1);
         lottery.claimFreeEntry(sig);
@@ -406,7 +478,7 @@ contract DailyLotteryTest is Test {
         assertEq(round.totalPaid, 3, "Total paid should be 3 FP (3 entries purchased)");
 
         // User can still claim free entry later
-        uint256 nonce = lottery.nonces(user1);
+        uint256 nonce = lottery.getUserNonce(dayId, user1);
         bytes memory sig = _signFreeEntry(user1, dayId, nonce);
         vm.prank(user1);
         lottery.claimFreeEntry(sig);
@@ -426,7 +498,7 @@ contract DailyLotteryTest is Test {
         lottery.buyEntry();
 
         // Then claims free entry
-        uint256 nonce = lottery.nonces(user1);
+        uint256 nonce = lottery.getUserNonce(dayId, user1);
         bytes memory sig = _signFreeEntry(user1, dayId, nonce);
         vm.prank(user1);
         lottery.claimFreeEntry(sig);
@@ -601,7 +673,7 @@ contract DailyLotteryTest is Test {
 
         // Day 2 lottery (auto-created when users participate)
         // Users need to claim again on day 2 (new signature for new day)
-        uint256 nonce = lottery.nonces(user1);
+        uint256 nonce = lottery.getUserNonce(day2, user1);
         bytes memory sig = _signFreeEntry(user1, day2, nonce);
         vm.prank(user1);
         lottery.claimFreeEntry(sig);
@@ -625,12 +697,12 @@ contract DailyLotteryTest is Test {
         // Round will be auto-created when claiming free entry
 
         // Add entries from multiple users
-        uint256 nonce1 = lottery.nonces(user1);
+        uint256 nonce1 = lottery.getUserNonce(dayId, user1);
         bytes memory sig1 = _signFreeEntry(user1, dayId, nonce1);
         vm.prank(user1);
         lottery.claimFreeEntry(sig1);
 
-        uint256 nonce2 = lottery.nonces(user2);
+        uint256 nonce2 = lottery.getUserNonce(dayId, user2);
         bytes memory sig2 = _signFreeEntry(user2, dayId, nonce2);
         vm.prank(user2);
         lottery.claimFreeEntry(sig2);
@@ -639,23 +711,146 @@ contract DailyLotteryTest is Test {
         assertEq(entriesList.length, 2, "Should have 2 entries");
     }
 
+    function test_GetRemainingEntries_NoEntries() public {
+        uint256 dayId = block.timestamp / 1 days;
+
+        // Check remaining entries before any participation
+        (uint256 remainingFree, uint256 remainingTotal) = lottery.getRemainingEntries(dayId, user1);
+
+        assertEq(remainingFree, 1, "Should have 1 free entry available (default)");
+        assertEq(remainingTotal, 5, "Should have 5 total entries available (default)");
+    }
+
+    function test_GetRemainingEntries_AfterFreeEntry() public {
+        uint256 dayId = block.timestamp / 1 days;
+
+        // Claim free entry
+        uint256 nonce = lottery.getUserNonce(dayId, user1);
+        bytes memory sig = _signFreeEntry(user1, dayId, nonce);
+        vm.prank(user1);
+        lottery.claimFreeEntry(sig);
+
+        // Check remaining entries
+        (uint256 remainingFree, uint256 remainingTotal) = lottery.getRemainingEntries(dayId, user1);
+
+        assertEq(remainingFree, 0, "Should have 0 free entries remaining");
+        assertEq(remainingTotal, 4, "Should have 4 total entries remaining");
+    }
+
+    function test_GetRemainingEntries_AfterBuyingEntries() public {
+        uint256 dayId = block.timestamp / 1 days;
+
+        // Buy 3 entries
+        for (uint256 i = 0; i < 3; i++) {
+            vm.prank(user1);
+            lottery.buyEntry();
+        }
+
+        // Check remaining entries
+        (uint256 remainingFree, uint256 remainingTotal) = lottery.getRemainingEntries(dayId, user1);
+
+        assertEq(remainingFree, 1, "Should still have 1 free entry available");
+        assertEq(remainingTotal, 2, "Should have 2 total entries remaining");
+    }
+
+    function test_GetRemainingEntries_AfterMixedEntries() public {
+        uint256 dayId = block.timestamp / 1 days;
+
+        // Claim free entry
+        uint256 nonce = lottery.getUserNonce(dayId, user1);
+        bytes memory sig = _signFreeEntry(user1, dayId, nonce);
+        vm.prank(user1);
+        lottery.claimFreeEntry(sig);
+
+        // Buy 2 more entries
+        vm.prank(user1);
+        lottery.buyEntry();
+        vm.prank(user1);
+        lottery.buyEntry();
+
+        // Check remaining entries (total 3 entries used: 1 free + 2 paid)
+        (uint256 remainingFree, uint256 remainingTotal) = lottery.getRemainingEntries(dayId, user1);
+
+        assertEq(remainingFree, 0, "Should have 0 free entries remaining");
+        assertEq(remainingTotal, 2, "Should have 2 total entries remaining");
+    }
+
+    function test_GetRemainingEntries_AtMaximum() public {
+        uint256 dayId = block.timestamp / 1 days;
+
+        // Claim free entry and buy 4 more to reach max (5 total)
+        uint256 nonce = lottery.getUserNonce(dayId, user1);
+        bytes memory sig = _signFreeEntry(user1, dayId, nonce);
+        vm.prank(user1);
+        lottery.claimFreeEntry(sig);
+
+        for (uint256 i = 0; i < 4; i++) {
+            vm.prank(user1);
+            lottery.buyEntry();
+        }
+
+        // Check remaining entries
+        (uint256 remainingFree, uint256 remainingTotal) = lottery.getRemainingEntries(dayId, user1);
+
+        assertEq(remainingFree, 0, "Should have 0 free entries remaining");
+        assertEq(remainingTotal, 0, "Should have 0 total entries remaining");
+    }
+
+    function test_GetRemainingEntries_WithCustomDefaults() public {
+        // Change defaults to 2 free entries out of 10 total
+        vm.prank(admin);
+        lottery.setDefaults(1, 1, 10, 2);
+
+        uint256 dayId = block.timestamp / 1 days;
+
+        // Check remaining entries before any participation
+        (uint256 remainingFree, uint256 remainingTotal) = lottery.getRemainingEntries(dayId, user1);
+
+        assertEq(remainingFree, 2, "Should have 2 free entries available (new default)");
+        assertEq(remainingTotal, 10, "Should have 10 total entries available (new default)");
+
+        // Claim one free entry
+        uint256 nonce = lottery.getUserNonce(dayId, user1);
+        bytes memory sig = _signFreeEntry(user1, dayId, nonce);
+        vm.prank(user1);
+        lottery.claimFreeEntry(sig);
+
+        // Check remaining entries again
+        (remainingFree, remainingTotal) = lottery.getRemainingEntries(dayId, user1);
+
+        assertEq(remainingFree, 1, "Should have 1 free entry remaining");
+        assertEq(remainingTotal, 9, "Should have 9 total entries remaining");
+    }
+
+    function test_GetRemainingEntries_NonExistentRound() public {
+        // Move to future day that has no round yet
+        vm.warp(block.timestamp + 5 days);
+        uint256 futureDayId = lottery.getCurrentDayId();
+
+        // Check remaining entries for non-existent round (should use defaults)
+        (uint256 remainingFree, uint256 remainingTotal) = lottery.getRemainingEntries(futureDayId, user1);
+
+        assertEq(remainingFree, 1, "Should use default free entries (1)");
+        assertEq(remainingTotal, 5, "Should use default total entries (5)");
+    }
+
     // ============ Helper Functions ============
 
     function setupThreeUsersWithEntries() internal {
         uint256 dayId = block.timestamp / 1 days;
 
         // Claim free entries with signatures
-        uint256 nonce1 = lottery.nonces(user1);
+        uint256 nonce1 = lottery.getUserNonce(dayId, user1);
         bytes memory sig1 = _signFreeEntry(user1, dayId, nonce1);
         vm.prank(user1);
         lottery.claimFreeEntry(sig1);
 
-        uint256 nonce2 = lottery.nonces(user2);
+        uint256 nonce2 = lottery.getUserNonce(dayId, user2);
         bytes memory sig2 = _signFreeEntry(user2, dayId, nonce2);
         vm.prank(user2);
         lottery.claimFreeEntry(sig2);
 
-        uint256 nonce3 = lottery.nonces(user3);
+        uint256 nonce3 = lottery.getUserNonce(dayId, user3);
         bytes memory sig3 = _signFreeEntry(user3, dayId, nonce3);
         vm.prank(user3);
         lottery.claimFreeEntry(sig3);
@@ -682,7 +877,7 @@ contract DailyLotteryTest is Test {
 
         // Try to claim free entry while paused
         uint256 dayId = block.timestamp / 1 days;
-        uint256 nonce = lottery.nonces(user1);
+        uint256 nonce = lottery.getUserNonce(dayId, user1);
         bytes memory sig = _signFreeEntry(user1, dayId, nonce);
 
         vm.prank(user1);
@@ -704,7 +899,7 @@ contract DailyLotteryTest is Test {
 
         // Should be able to claim free entry after unpause
         uint256 dayId = block.timestamp / 1 days;
-        uint256 nonce = lottery.nonces(user1);
+        uint256 nonce = lottery.getUserNonce(dayId, user1);
         bytes memory sig = _signFreeEntry(user1, dayId, nonce);
 
         vm.prank(user1);
@@ -773,7 +968,7 @@ contract DailyLotteryTest is Test {
         uint256 day2 = lottery.getCurrentDayId();
 
         // User claims entry for day 2
-        uint256 nonce = lottery.nonces(user1);
+        uint256 nonce = lottery.getUserNonce(day2, user1);
         bytes memory sig = _signFreeEntry(user1, day2, nonce);
         vm.prank(user1);
         lottery.claimFreeEntry(sig);
@@ -809,7 +1004,7 @@ contract DailyLotteryTest is Test {
         uint256 dayId = block.timestamp / 1 days;
 
         // User claims free entry
-        uint256 nonce = lottery.nonces(user1);
+        uint256 nonce = lottery.getUserNonce(dayId, user1);
         bytes memory sig = _signFreeEntry(user1, dayId, nonce);
         vm.prank(user1);
         lottery.claimFreeEntry(sig);

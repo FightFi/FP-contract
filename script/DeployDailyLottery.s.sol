@@ -64,7 +64,9 @@ contract DeployDailyLottery is Script {
         console.log("\n2. Grant FREE_ENTRY_SIGNER_ROLE to backend service:");
         console.log("   DailyLottery(lotteryAddress).grantRole(FREE_ENTRY_SIGNER_ROLE, backend_signer_address)");
         console.log("\n3. Rounds auto-create when users participate (using defaults from initialize)");
-        console.log("   To change defaults: DailyLottery.setDefaults(seasonId, entryPrice, maxEntriesPerUser)");
+        console.log(
+            "   To change defaults: DailyLottery.setDefaults(seasonId, entryPrice, maxEntriesPerUser, maxFreeEntriesPerUser)"
+        );
         console.log("\n4. To draw winner:");
         console.log("   - For FP: drawWinner(dayId, index, PrizeData(FP, address(0), seasonId, amount))");
         console.log(
@@ -144,6 +146,7 @@ contract SetDailyLotteryDefaults is Script {
         uint256 seasonId = vm.envUint("SEASON_ID");
         uint256 entryPrice = vm.envOr("ENTRY_PRICE", uint256(1));
         uint256 maxEntriesPerUser = vm.envOr("MAX_ENTRIES_PER_USER", uint256(5));
+        uint256 maxFreeEntriesPerUser = vm.envOr("MAX_FREE_ENTRIES_PER_USER", uint256(1));
 
         uint256 adminPrivateKey = vm.envUint("PRIVATE_KEY");
 
@@ -154,9 +157,10 @@ contract SetDailyLotteryDefaults is Script {
         console.log("Default Season ID:", seasonId);
         console.log("Default Entry Price:", entryPrice);
         console.log("Default Max Entries Per User:", maxEntriesPerUser);
+        console.log("Default Max Free Entries Per User:", maxFreeEntriesPerUser);
 
         DailyLottery lottery = DailyLottery(lotteryAddress);
-        lottery.setDefaults(seasonId, entryPrice, maxEntriesPerUser);
+        lottery.setDefaults(seasonId, entryPrice, maxEntriesPerUser, maxFreeEntriesPerUser);
 
         console.log("\n=== Defaults Updated ===");
         console.log("New rounds will auto-create with these values when users participate");

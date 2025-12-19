@@ -10,16 +10,19 @@ import { EIP712Upgradeable } from "@openzeppelin/contracts-upgradeable/utils/cry
 import { ECDSA } from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import { IERC1155Receiver } from "@openzeppelin/contracts/token/ERC1155/IERC1155Receiver.sol";
 import { FP1155 } from "./FP1155.sol";
 
 /**
  * @title DailyLottery
  * @notice Daily lottery system where users can get free entries via backend authorization.
  *         Users can also buy additional entries using FP tokens.
+ *         Free entries per user are capped at maxFreeEntriesPerUser (default 1).
  *         Total entries per user are capped at maxEntriesPerUser (default 5).
  *         Prize can be in FP or any ERC20 token, configurable per lottery round.
  * @dev Free entries are authorized via EIP-712 signatures, similar to FP1155 claims.
- *      Users can claim multiple free entries if the backend provides multiple signatures.
+ *      Users can claim multiple free entries if the backend provides multiple signatures
+ *      up to the maxFreeEntriesPerUser limit.
  */
 contract DailyLottery is
     Initializable,
@@ -27,7 +30,8 @@ contract DailyLottery is
     AccessControlUpgradeable,
     ReentrancyGuardUpgradeable,
     PausableUpgradeable,
-    EIP712Upgradeable
+    EIP712Upgradeable,
+    IERC1155Receiver
 {
     using SafeERC20 for IERC20;
 
@@ -58,6 +62,7 @@ contract DailyLottery is
         uint256 seasonId; // FP season ID for this round (used for burning tokens)
         uint256 entryPrice; // Price in FP to buy one entry (in FP token decimals, default 1)
         uint256 maxEntriesPerUser; // Maximum entries per user for this round (default 5)
+        uint256 maxFreeEntriesPerUser; // Maximum free entries per user for this round (default 1)
         uint256 totalEntries; // Total number of entries
         uint256 totalPaid; // Total FP tokens paid/burned for this round
         address winner; // Winner address (address(0) if not drawn yet) - packed with finalized
@@ -75,6 +80,7 @@ contract DailyLottery is
     uint256 public defaultSeasonId; // Default season ID for FP
     uint256 public defaultEntryPrice; // Default entry price (1 by default)
     uint256 public defaultMaxEntriesPerUser; // Default max entries per user (5 by default)
+    uint256 public defaultMaxFreeEntriesPerUser; // Default max free entries per user (1 by default)
 
     // Lottery rounds by day
     mapping(uint256 => LotteryRound) public lotteryRounds;
@@ -85,11 +91,18 @@ contract DailyLottery is
     // Entry tickets: dayId => array of user addresses (one address per entry)
     mapping(uint256 => address[]) public entries;
 
-    // Nonces for free entry claims (per-user monotonically increasing nonce)
-    mapping(address => uint256) public nonces;
+    // Nonces for free entry claims (per-user per-round monotonically increasing nonce)
+    // dayId => user => nonce
+    mapping(uint256 => mapping(address => uint256)) public nonces;
 
     // ============ Events ============
-    event LotteryRoundCreated(uint256 indexed dayId, uint256 seasonId, uint256 entryPrice, uint256 maxEntriesPerUser);
+    event LotteryRoundCreated(
+        uint256 indexed dayId,
+        uint256 seasonId,
+        uint256 entryPrice,
+        uint256 maxEntriesPerUser,
+        uint256 maxFreeEntriesPerUser
+    );
     event FreeEntryGranted(address indexed user, uint256 indexed dayId, uint256 nonce);
     event EntryPurchased(address indexed user, uint256 indexed dayId, uint256 entriesPurchased);
     event WinnerDrawn(
@@ -100,12 +113,18 @@ contract DailyLottery is
         uint256 seasonId, // FP season ID (0 for ERC20 prizes)
         uint256 amount
     );
-    event DefaultsUpdated(uint256 seasonId, uint256 entryPrice, uint256 maxEntriesPerUser);
+    event DefaultsUpdated(
+        uint256 seasonId,
+        uint256 entryPrice,
+        uint256 maxEntriesPerUser,
+        uint256 maxFreeEntriesPerUser
+    );
 
     // ============ Errors ============
     error InvalidAddress();
     error InvalidAmount();
     error MaxEntriesExceeded();
+    error MaxFreeEntriesExceeded();
     error AlreadyFinalized();
     error NotFinalized();
     error NoEntries();
@@ -144,6 +163,7 @@ contract DailyLottery is
         defaultSeasonId = 1;
         defaultEntryPrice = 1;
         defaultMaxEntriesPerUser = 5;
+        defaultMaxFreeEntriesPerUser = 1;
     }
 
     /// @dev UUPS upgrade authorization: only DEFAULT_ADMIN_ROLE can upgrade
@@ -171,31 +191,44 @@ contract DailyLottery is
      * @param _defaultSeasonId Default season ID for FP
      * @param _defaultEntryPrice Default entry price
      * @param _defaultMaxEntriesPerUser Default max entries per user
+     * @param _defaultMaxFreeEntriesPerUser Default max free entries per user
      */
-    function setDefaults(uint256 _defaultSeasonId, uint256 _defaultEntryPrice, uint256 _defaultMaxEntriesPerUser)
-        external
-        onlyRole(LOTTERY_ADMIN_ROLE)
-    {
+    function setDefaults(
+        uint256 _defaultSeasonId,
+        uint256 _defaultEntryPrice,
+        uint256 _defaultMaxEntriesPerUser,
+        uint256 _defaultMaxFreeEntriesPerUser
+    ) external onlyRole(LOTTERY_ADMIN_ROLE) {
         if (_defaultEntryPrice == 0) revert InvalidAmount();
         if (_defaultMaxEntriesPerUser == 0) revert InvalidAmount();
+        if (_defaultMaxFreeEntriesPerUser == 0) revert InvalidAmount();
+        if (_defaultMaxFreeEntriesPerUser > _defaultMaxEntriesPerUser) revert InvalidAmount();
 
         defaultSeasonId = _defaultSeasonId;
         defaultEntryPrice = _defaultEntryPrice;
         defaultMaxEntriesPerUser = _defaultMaxEntriesPerUser;
+        defaultMaxFreeEntriesPerUser = _defaultMaxFreeEntriesPerUser;
 
-        emit DefaultsUpdated(_defaultSeasonId, _defaultEntryPrice, _defaultMaxEntriesPerUser);
+        emit DefaultsUpdated(_defaultSeasonId, _defaultEntryPrice, _defaultMaxEntriesPerUser, _defaultMaxFreeEntriesPerUser);
     }
 
     /**
      * @notice Internal function to create a lottery round
      * @dev Used by auto-creation when users participate
      */
-    function _createRound(uint256 dayId, uint256 seasonId, uint256 entryPrice, uint256 maxEntriesPerUser) internal {
+    function _createRound(
+        uint256 dayId,
+        uint256 seasonId,
+        uint256 entryPrice,
+        uint256 maxEntriesPerUser,
+        uint256 maxFreeEntriesPerUser
+    ) internal {
         lotteryRounds[dayId] = LotteryRound({
             dayId: dayId,
             seasonId: seasonId,
             entryPrice: entryPrice,
             maxEntriesPerUser: maxEntriesPerUser,
+            maxFreeEntriesPerUser: maxFreeEntriesPerUser,
             totalEntries: 0,
             totalPaid: 0,
             winner: address(0),
@@ -206,7 +239,7 @@ contract DailyLottery is
             prizeAmount: 0
         });
 
-        emit LotteryRoundCreated(dayId, seasonId, entryPrice, maxEntriesPerUser);
+        emit LotteryRoundCreated(dayId, seasonId, entryPrice, maxEntriesPerUser, maxFreeEntriesPerUser);
     }
 
     /**
@@ -218,7 +251,13 @@ contract DailyLottery is
     function _ensureRoundExists(uint256 dayId, LotteryRound storage round) internal {
         // If round doesn't exist, create it with defaults
         if (round.dayId != dayId) {
-            _createRound(dayId, defaultSeasonId, defaultEntryPrice, defaultMaxEntriesPerUser);
+            _createRound(
+                dayId,
+                defaultSeasonId,
+                defaultEntryPrice,
+                defaultMaxEntriesPerUser,
+                defaultMaxFreeEntriesPerUser
+            );
         }
     }
 
@@ -258,7 +297,7 @@ contract DailyLottery is
 
         // Transfer prize directly from admin to winner
         if (prize.prizeType == PrizeType.FP) {
-            fpToken.safeTransferFrom(msg.sender, winner, prize.seasonId, prize.amount, "");
+            fpToken.agentTransferFrom(msg.sender, winner, prize.seasonId, prize.amount, "");
         } else {
             IERC20(prize.tokenAddress).safeTransferFrom(msg.sender, winner, prize.amount);
         }
@@ -282,6 +321,7 @@ contract DailyLottery is
      * @dev User must have a valid signature from the backend server authorizing entry for today.
      *      Users can claim multiple free entries if the backend provides multiple signatures.
      *      The signature is specific to the dayId and nonce, preventing reuse.
+     *      The nonce is per-round (per-day), resetting for each new day.
      *      The user pays gas for their own entry.
      */
     function claimFreeEntry(bytes calldata signature) external nonReentrant whenNotPaused {
@@ -294,12 +334,18 @@ contract DailyLottery is
         // Check lottery is active
         if (round.finalized) revert LotteryNotActive();
 
-        // Check that claiming free entry won't exceed maximum
+        // Check that claiming free entry won't exceed maximum total entries
         uint256 currentUserEntries = userEntries[dayId][msg.sender];
         if (currentUserEntries >= round.maxEntriesPerUser) revert MaxEntriesExceeded();
 
-        // Verify signature for this specific day
-        uint256 nonce = nonces[msg.sender];
+        // Get current nonce for this user in this round
+        uint256 nonce = nonces[dayId][msg.sender];
+
+        // Check that claiming free entry won't exceed maximum free entries
+        // (nonce represents the number of free entries already claimed)
+        if (nonce >= round.maxFreeEntriesPerUser) revert MaxFreeEntriesExceeded();
+
+        // Verify signature for this specific day and nonce
         bytes32 structHash = keccak256(abi.encode(FREE_ENTRY_TYPEHASH, msg.sender, dayId, nonce));
         bytes32 digest = _hashTypedDataV4(structHash);
         address signer = ECDSA.recover(digest, signature);
@@ -308,8 +354,8 @@ contract DailyLottery is
         if (signer == address(0)) revert InvalidSigner();
         if (!hasRole(FREE_ENTRY_SIGNER_ROLE, signer)) revert InvalidSigner();
 
-        // Increment nonce before effects to prevent reentrancy
-        nonces[msg.sender] = nonce + 1;
+        // Increment nonce for this round before effects to prevent reentrancy
+        nonces[dayId][msg.sender] = nonce + 1;
 
         // Grant free entry (use cached value)
         userEntries[dayId][msg.sender] = currentUserEntries + 1;
@@ -340,8 +386,11 @@ contract DailyLottery is
         // Check total entries won't exceed maximum
         if (currentEntries >= round.maxEntriesPerUser) revert MaxEntriesExceeded();
 
-        // Burn FP tokens based on entry price
-        fpToken.burn(msg.sender, round.seasonId, round.entryPrice);
+        // Transfer FP tokens from user to contract using agentTransferFrom (requires TRANSFER_AGENT_ROLE)
+        fpToken.agentTransferFrom(msg.sender, address(this), round.seasonId, round.entryPrice, "");
+        
+        // Burn the received FP tokens
+        fpToken.burn(address(this), round.seasonId, round.entryPrice);
 
         // Add 1 entry
         userEntries[dayId][msg.sender] = currentEntries + 1;
@@ -374,6 +423,16 @@ contract DailyLottery is
     }
 
     /**
+     * @notice Get user's nonce (free entries claimed) for a specific day
+     * @param dayId Day identifier
+     * @param user User address
+     * @return Number of free entries claimed (nonce value)
+     */
+    function getUserNonce(uint256 dayId, address user) external view returns (uint256) {
+        return nonces[dayId][user];
+    }
+
+    /**
      * @notice Get all entries for a specific day
      * @param dayId Day identifier
      * @return Array of user addresses (one per entry)
@@ -400,11 +459,68 @@ contract DailyLottery is
     }
 
     /**
+     * @notice Get remaining entries available for a user on a specific day
+     * @param dayId Day identifier
+     * @param user User address
+     * @return remainingFreeEntries Number of free entries the user can still claim
+     * @return remainingTotalEntries Total number of entries (free + paid) the user can still claim/buy
+     */
+    function getRemainingEntries(uint256 dayId, address user) 
+        external 
+        view 
+        returns (uint256 remainingFreeEntries, uint256 remainingTotalEntries) 
+    {
+        LotteryRound storage round = lotteryRounds[dayId];
+        
+        // If round doesn't exist, use default values
+        uint256 maxFree = (round.dayId == dayId) ? round.maxFreeEntriesPerUser : defaultMaxFreeEntriesPerUser;
+        uint256 maxTotal = (round.dayId == dayId) ? round.maxEntriesPerUser : defaultMaxEntriesPerUser;
+        
+        // Get user's current entries
+        uint256 currentFreeEntries = nonces[dayId][user];
+        uint256 currentTotalEntries = userEntries[dayId][user];
+        
+        // Calculate remaining entries
+        remainingFreeEntries = maxFree > currentFreeEntries ? maxFree - currentFreeEntries : 0;
+        remainingTotalEntries = maxTotal > currentTotalEntries ? maxTotal - currentTotalEntries : 0;
+        
+        return (remainingFreeEntries, remainingTotalEntries);
+    }
+
+    /**
      * @notice Get EIP-712 domain separator for client-side signing
      * @return Domain separator hash
      */
     function DOMAIN_SEPARATOR() external view returns (bytes32) {
         return _domainSeparatorV4();
+    }
+
+    // ============ ERC1155Receiver Implementation ============
+    
+    /**
+     * @notice Handles the receipt of a single ERC1155 token type
+     * @return bytes4 magic value to confirm the transfer
+     */
+    function onERC1155Received(address, address, uint256, uint256, bytes memory)
+        public
+        pure
+        override
+        returns (bytes4)
+    {
+        return IERC1155Receiver.onERC1155Received.selector;
+    }
+
+    /**
+     * @notice Handles the receipt of multiple ERC1155 token types
+     * @return bytes4 magic value to confirm the transfer
+     */
+    function onERC1155BatchReceived(address, address, uint256[] memory, uint256[] memory, bytes memory)
+        public
+        pure
+        override
+        returns (bytes4)
+    {
+        return IERC1155Receiver.onERC1155BatchReceived.selector;
     }
 
     // Storage gap for future upgrades
