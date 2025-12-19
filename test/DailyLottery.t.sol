@@ -52,10 +52,7 @@ contract DailyLotteryTest is Test {
         uint256 amount
     );
     event DefaultsUpdated(
-        uint256 seasonId,
-        uint256 entryPrice,
-        uint256 maxEntriesPerUser,
-        uint256 maxFreeEntriesPerUser
+        uint256 seasonId, uint256 entryPrice, uint256 maxEntriesPerUser, uint256 maxFreeEntriesPerUser
     );
 
     function setUp() public {

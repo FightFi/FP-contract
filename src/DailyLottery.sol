@@ -114,10 +114,7 @@ contract DailyLottery is
         uint256 amount
     );
     event DefaultsUpdated(
-        uint256 seasonId,
-        uint256 entryPrice,
-        uint256 maxEntriesPerUser,
-        uint256 maxFreeEntriesPerUser
+        uint256 seasonId, uint256 entryPrice, uint256 maxEntriesPerUser, uint256 maxFreeEntriesPerUser
     );
 
     // ============ Errors ============
@@ -209,7 +206,9 @@ contract DailyLottery is
         defaultMaxEntriesPerUser = _defaultMaxEntriesPerUser;
         defaultMaxFreeEntriesPerUser = _defaultMaxFreeEntriesPerUser;
 
-        emit DefaultsUpdated(_defaultSeasonId, _defaultEntryPrice, _defaultMaxEntriesPerUser, _defaultMaxFreeEntriesPerUser);
+        emit DefaultsUpdated(
+            _defaultSeasonId, _defaultEntryPrice, _defaultMaxEntriesPerUser, _defaultMaxFreeEntriesPerUser
+        );
     }
 
     /**
@@ -252,11 +251,7 @@ contract DailyLottery is
         // If round doesn't exist, create it with defaults
         if (round.dayId != dayId) {
             _createRound(
-                dayId,
-                defaultSeasonId,
-                defaultEntryPrice,
-                defaultMaxEntriesPerUser,
-                defaultMaxFreeEntriesPerUser
+                dayId, defaultSeasonId, defaultEntryPrice, defaultMaxEntriesPerUser, defaultMaxFreeEntriesPerUser
             );
         }
     }
@@ -388,7 +383,7 @@ contract DailyLottery is
 
         // Transfer FP tokens from user to contract using agentTransferFrom (requires TRANSFER_AGENT_ROLE)
         fpToken.agentTransferFrom(msg.sender, address(this), round.seasonId, round.entryPrice, "");
-        
+
         // Burn the received FP tokens
         fpToken.burn(address(this), round.seasonId, round.entryPrice);
 
@@ -465,25 +460,25 @@ contract DailyLottery is
      * @return remainingFreeEntries Number of free entries the user can still claim
      * @return remainingTotalEntries Total number of entries (free + paid) the user can still claim/buy
      */
-    function getRemainingEntries(uint256 dayId, address user) 
-        external 
-        view 
-        returns (uint256 remainingFreeEntries, uint256 remainingTotalEntries) 
+    function getRemainingEntries(uint256 dayId, address user)
+        external
+        view
+        returns (uint256 remainingFreeEntries, uint256 remainingTotalEntries)
     {
         LotteryRound storage round = lotteryRounds[dayId];
-        
+
         // If round doesn't exist, use default values
         uint256 maxFree = (round.dayId == dayId) ? round.maxFreeEntriesPerUser : defaultMaxFreeEntriesPerUser;
         uint256 maxTotal = (round.dayId == dayId) ? round.maxEntriesPerUser : defaultMaxEntriesPerUser;
-        
+
         // Get user's current entries
         uint256 currentFreeEntries = nonces[dayId][user];
         uint256 currentTotalEntries = userEntries[dayId][user];
-        
+
         // Calculate remaining entries
         remainingFreeEntries = maxFree > currentFreeEntries ? maxFree - currentFreeEntries : 0;
         remainingTotalEntries = maxTotal > currentTotalEntries ? maxTotal - currentTotalEntries : 0;
-        
+
         return (remainingFreeEntries, remainingTotalEntries);
     }
 
@@ -496,17 +491,12 @@ contract DailyLottery is
     }
 
     // ============ ERC1155Receiver Implementation ============
-    
+
     /**
      * @notice Handles the receipt of a single ERC1155 token type
      * @return bytes4 magic value to confirm the transfer
      */
-    function onERC1155Received(address, address, uint256, uint256, bytes memory)
-        public
-        pure
-        override
-        returns (bytes4)
-    {
+    function onERC1155Received(address, address, uint256, uint256, bytes memory) public pure override returns (bytes4) {
         return IERC1155Receiver.onERC1155Received.selector;
     }
 
