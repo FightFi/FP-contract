@@ -117,16 +117,6 @@ contract DailyLottery is
         uint256 seasonId, uint256 entryPrice, uint256 maxEntriesPerUser, uint256 maxFreeEntriesPerUser
     );
 
-    // ============ Errors ============
-    error InvalidAddress();
-    error InvalidAmount();
-    error MaxEntriesExceeded();
-    error MaxFreeEntriesExceeded();
-    error AlreadyFinalized();
-    error NotFinalized();
-    error NoEntries();
-    error LotteryNotActive();
-    error InvalidSigner();
 
     // ============ Initializer ============
     /// @custom:oz-upgrades-unsafe-allow constructor
@@ -140,9 +130,7 @@ contract DailyLottery is
      * @param _admin Address of the admin
      */
     function initialize(address _fpToken, address _admin) public initializer {
-        if (_fpToken == address(0) || _admin == address(0)) {
-            revert InvalidAddress();
-        }
+        require(_fpToken != address(0) && _admin != address(0), "Invalid address");
 
         __AccessControl_init();
         __UUPSUpgradeable_init();
@@ -196,10 +184,10 @@ contract DailyLottery is
         uint256 _defaultMaxEntriesPerUser,
         uint256 _defaultMaxFreeEntriesPerUser
     ) external onlyRole(LOTTERY_ADMIN_ROLE) {
-        if (_defaultEntryPrice == 0) revert InvalidAmount();
-        if (_defaultMaxEntriesPerUser == 0) revert InvalidAmount();
-        if (_defaultMaxFreeEntriesPerUser == 0) revert InvalidAmount();
-        if (_defaultMaxFreeEntriesPerUser > _defaultMaxEntriesPerUser) revert InvalidAmount();
+        require(_defaultEntryPrice > 0, "Invalid entry price");
+        require(_defaultMaxEntriesPerUser > 0, "Invalid max entries");
+        require(_defaultMaxFreeEntriesPerUser > 0, "Invalid max free entries");
+        require(_defaultMaxFreeEntriesPerUser <= _defaultMaxEntriesPerUser, "Max free exceeds max total");
 
         defaultSeasonId = _defaultSeasonId;
         defaultEntryPrice = _defaultEntryPrice;
@@ -262,7 +250,7 @@ contract DailyLottery is
      * @param winningIndex Index of the winning entry (generated off-chain)
      * @param prize Prize data (type, token address for ERC20, season ID for FP, and amount)
      * @dev The admin generates a random number off-chain and passes the winning index.
-     *      The prize is transferred directly from the admin to the winner.
+     *      The prize is transferred from the admin to the contract, then from the contract to the winner.
      *      For ERC20 prizes, any ERC20 token can be used (USDT, USDC, POL, etc.).
      *      For FP prizes, the seasonId is independent of the seasonId used for burning entry fees.
      */
@@ -272,27 +260,31 @@ contract DailyLottery is
         nonReentrant
     {
         // Early validation of prize data (before storage access)
-        if (prize.amount == 0) revert InvalidAmount();
-        if (prize.prizeType == PrizeType.ERC20 && prize.tokenAddress == address(0)) {
-            revert InvalidAddress();
+        require(prize.amount > 0, "Invalid prize amount");
+        // If prize is ERC20, token address must be valid (not zero)
+        if (prize.prizeType == PrizeType.ERC20) {
+            require(prize.tokenAddress != address(0), "Invalid token address for ERC20");
         }
 
         LotteryRound storage round = lotteryRounds[dayId];
 
-        if (round.dayId != dayId) revert LotteryNotActive();
-        if (round.finalized) revert AlreadyFinalized();
-        if (round.totalEntries == 0) revert NoEntries();
-        if (winningIndex >= round.totalEntries) revert InvalidAmount();
+        require(round.dayId == dayId, "Lottery not active");
+        require(!round.finalized, "Already finalized");
+        require(round.totalEntries > 0, "No entries");
+        require(winningIndex < round.totalEntries, "Invalid winning index");
 
         // Get winner from entries array using the provided index
         address winner = entries[dayId][winningIndex];
 
         // Validate winner address
-        if (winner == address(0)) revert InvalidAddress();
+        require(winner != address(0), "Invalid winner address");
 
-        // Transfer prize directly from admin to winner
+        // Transfer prize from admin to contract, then from contract to winner
         if (prize.prizeType == PrizeType.FP) {
-            fpToken.agentTransferFrom(msg.sender, winner, prize.seasonId, prize.amount, "");
+            // Transfer FP tokens from admin to contract
+            fpToken.agentTransferFrom(msg.sender, address(this), prize.seasonId, prize.amount, "");
+            // Transfer FP tokens from contract to winner
+            fpToken.agentTransferFrom(address(this), winner, prize.seasonId, prize.amount, "");
         } else {
             IERC20(prize.tokenAddress).safeTransferFrom(msg.sender, winner, prize.amount);
         }
@@ -327,18 +319,18 @@ contract DailyLottery is
         _ensureRoundExists(dayId, round);
 
         // Check lottery is active
-        if (round.finalized) revert LotteryNotActive();
+        require(!round.finalized, "Lottery not active");
 
         // Check that claiming free entry won't exceed maximum total entries
         uint256 currentUserEntries = userEntries[dayId][msg.sender];
-        if (currentUserEntries >= round.maxEntriesPerUser) revert MaxEntriesExceeded();
+        require(currentUserEntries < round.maxEntriesPerUser, "Max entries exceeded");
 
         // Get current nonce for this user in this round
         uint256 nonce = nonces[dayId][msg.sender];
 
         // Check that claiming free entry won't exceed maximum free entries
         // (nonce represents the number of free entries already claimed)
-        if (nonce >= round.maxFreeEntriesPerUser) revert MaxFreeEntriesExceeded();
+        require(nonce < round.maxFreeEntriesPerUser, "Max free entries exceeded");
 
         // Verify signature for this specific day and nonce
         bytes32 structHash = keccak256(abi.encode(FREE_ENTRY_TYPEHASH, msg.sender, dayId, nonce));
@@ -346,8 +338,8 @@ contract DailyLottery is
         address signer = ECDSA.recover(digest, signature);
 
         // Validate signer is not zero address (invalid signature)
-        if (signer == address(0)) revert InvalidSigner();
-        if (!hasRole(FREE_ENTRY_SIGNER_ROLE, signer)) revert InvalidSigner();
+        require(signer != address(0), "Invalid signature");
+        require(hasRole(FREE_ENTRY_SIGNER_ROLE, signer), "Invalid signer");
 
         // Increment nonce for this round before effects to prevent reentrancy
         nonces[dayId][msg.sender] = nonce + 1;
@@ -373,13 +365,13 @@ contract DailyLottery is
         _ensureRoundExists(dayId, round);
 
         // Check lottery is active
-        if (round.finalized) revert LotteryNotActive();
+        require(!round.finalized, "Lottery not active");
 
         // Check current entries
         uint256 currentEntries = userEntries[dayId][msg.sender];
 
         // Check total entries won't exceed maximum
-        if (currentEntries >= round.maxEntriesPerUser) revert MaxEntriesExceeded();
+        require(currentEntries < round.maxEntriesPerUser, "Max entries exceeded");
 
         // Transfer FP tokens from user to contract using agentTransferFrom (requires TRANSFER_AGENT_ROLE)
         fpToken.agentTransferFrom(msg.sender, address(this), round.seasonId, round.entryPrice, "");

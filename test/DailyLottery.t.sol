@@ -186,25 +186,25 @@ contract DailyLotteryTest is Test {
 
     function test_SetDefaults_RevertZeroEntryPrice() public {
         vm.prank(admin);
-        vm.expectRevert(DailyLottery.InvalidAmount.selector);
+        vm.expectRevert("Invalid entry price");
         lottery.setDefaults(1, 0, 5, 1);
     }
 
     function test_SetDefaults_RevertZeroMaxEntries() public {
         vm.prank(admin);
-        vm.expectRevert(DailyLottery.InvalidAmount.selector);
+        vm.expectRevert("Invalid max entries");
         lottery.setDefaults(1, 1, 0, 1);
     }
 
     function test_SetDefaults_RevertZeroMaxFreeEntries() public {
         vm.prank(admin);
-        vm.expectRevert(DailyLottery.InvalidAmount.selector);
+        vm.expectRevert("Invalid max free entries");
         lottery.setDefaults(1, 1, 5, 0);
     }
 
     function test_SetDefaults_RevertMaxFreeExceedsMax() public {
         vm.prank(admin);
-        vm.expectRevert(DailyLottery.InvalidAmount.selector);
+        vm.expectRevert("Max free exceeds max total");
         lottery.setDefaults(1, 1, 5, 6); // maxFree > maxEntries
     }
 
@@ -263,7 +263,7 @@ contract DailyLotteryTest is Test {
 
         // Try to claim free entry with invalid signature
         vm.prank(user1);
-        vm.expectRevert(DailyLottery.InvalidSigner.selector);
+        vm.expectRevert("Invalid signer");
         lottery.claimFreeEntry(badSig);
     }
 
@@ -279,7 +279,7 @@ contract DailyLotteryTest is Test {
 
         // Try to claim with signature for wrong day
         vm.prank(user1);
-        vm.expectRevert(DailyLottery.InvalidSigner.selector);
+        vm.expectRevert("Invalid signer");
         lottery.claimFreeEntry(sig);
     }
 
@@ -330,7 +330,7 @@ contract DailyLotteryTest is Test {
         bytes memory newSig = _signFreeEntry(user1, dayId, newNonce);
 
         vm.prank(user1);
-        vm.expectRevert(DailyLottery.MaxFreeEntriesExceeded.selector);
+        vm.expectRevert("Max free entries exceeded");
         lottery.claimFreeEntry(newSig);
     }
 
@@ -411,7 +411,7 @@ contract DailyLotteryTest is Test {
         uint256 nonce = lottery.getUserNonce(dayId, user1);
         bytes memory sig = _signFreeEntry(user1, dayId, nonce);
         vm.prank(user1);
-        vm.expectRevert(DailyLottery.MaxEntriesExceeded.selector);
+        vm.expectRevert("Max entries exceeded");
         lottery.claimFreeEntry(sig);
     }
 
@@ -430,7 +430,7 @@ contract DailyLotteryTest is Test {
 
         // Try to buy one more - should fail
         vm.prank(user1);
-        vm.expectRevert(DailyLottery.MaxEntriesExceeded.selector);
+        vm.expectRevert("Max entries exceeded");
         lottery.buyEntry();
     }
 
@@ -453,7 +453,7 @@ contract DailyLotteryTest is Test {
 
         // Try to buy one more entry - should fail as already at max
         vm.prank(user1);
-        vm.expectRevert(DailyLottery.MaxEntriesExceeded.selector);
+        vm.expectRevert("Max entries exceeded");
         lottery.buyEntry(); // Already have 5, trying to add 1 more = 6 total
     }
 
@@ -510,7 +510,7 @@ contract DailyLotteryTest is Test {
 
         // Try to buy more - should fail
         vm.prank(user1);
-        vm.expectRevert(DailyLottery.MaxEntriesExceeded.selector);
+        vm.expectRevert("Max entries exceeded");
         lottery.buyEntry();
     }
 
@@ -603,7 +603,7 @@ contract DailyLotteryTest is Test {
         });
 
         vm.prank(admin);
-        vm.expectRevert(DailyLottery.LotteryNotActive.selector);
+        vm.expectRevert("Lottery not active");
         lottery.drawWinner(dayId, 0, prize);
     }
 
@@ -625,7 +625,7 @@ contract DailyLotteryTest is Test {
 
         // Try to draw again
         vm.prank(admin);
-        vm.expectRevert(DailyLottery.AlreadyFinalized.selector);
+        vm.expectRevert("Already finalized");
         lottery.drawWinner(dayId, 0, prize);
     }
 
@@ -645,7 +645,7 @@ contract DailyLotteryTest is Test {
         });
 
         vm.prank(admin);
-        vm.expectRevert(DailyLottery.InvalidAmount.selector);
+        vm.expectRevert("Invalid winning index");
         lottery.drawWinner(dayId, totalEntries, prize); // Index starts at 0, so totalEntries is out of bounds
     }
 
