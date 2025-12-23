@@ -83,17 +83,17 @@ contract DailyLottery is
     uint256 public defaultMaxFreeEntriesPerUser; // Default max free entries per user (1 by default)
 
     // Lottery rounds by day
-    mapping(uint256 => LotteryRound) public lotteryRounds;
+    mapping(uint256 => LotteryRound) private lotteryRounds;
 
     // User entries per day: dayId => user => entry count
-    mapping(uint256 => mapping(address => uint256)) public userEntries;
+    mapping(uint256 => mapping(address => uint256)) private userEntries;
 
     // Entry tickets: dayId => array of user addresses (one address per entry)
-    mapping(uint256 => address[]) public entries;
+    mapping(uint256 => address[]) private entries;
 
     // Nonces for free entry claims (per-user per-round monotonically increasing nonce)
     // dayId => user => nonce
-    mapping(uint256 => mapping(address => uint256)) public nonces;
+    mapping(uint256 => mapping(address => uint256)) private nonces;
 
     // ============ Events ============
     event LotteryRoundCreated(
