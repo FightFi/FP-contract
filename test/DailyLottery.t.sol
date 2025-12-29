@@ -526,7 +526,7 @@ contract DailyLotteryTest is Test {
 
         uint256 winningIndex = 0; // Pick first entry for testing
 
-        address expectedWinner = lottery.getEntries(dayId)[winningIndex];
+        address expectedWinner = lottery.getEntry(dayId, winningIndex);
         uint256 winnerBalanceBefore = fpToken.balanceOf(expectedWinner, SEASON_ID);
         uint256 adminBalanceBefore = fpToken.balanceOf(admin, SEASON_ID);
 
@@ -564,7 +564,7 @@ contract DailyLotteryTest is Test {
 
         uint256 winningIndex = 2; // Pick third entry for testing
 
-        address expectedWinner = lottery.getEntries(dayId)[winningIndex];
+        address expectedWinner = lottery.getEntry(dayId, winningIndex);
         uint256 winnerBalanceBefore = usdt.balanceOf(expectedWinner);
         uint256 adminBalanceBefore = usdt.balanceOf(admin);
 
@@ -704,8 +704,10 @@ contract DailyLotteryTest is Test {
         vm.prank(user2);
         lottery.claimFreeEntry(sig2);
 
-        address[] memory entriesList = lottery.getEntries(dayId);
-        assertEq(entriesList.length, 2, "Should have 2 entries");
+        // Verify entries using getEntry and getTotalEntries
+        assertEq(lottery.getTotalEntries(dayId), 2, "Should have 2 entries");
+        assertEq(lottery.getEntry(dayId, 0), user1, "First entry should be user1");
+        assertEq(lottery.getEntry(dayId, 1), user2, "Second entry should be user2");
     }
 
     function test_GetRemainingEntries_NoEntries() public {
@@ -943,7 +945,7 @@ contract DailyLotteryTest is Test {
         usdc.approve(address(lottery), type(uint256).max);
 
         uint256 winningIndex = 1;
-        address expectedWinner = lottery.getEntries(dayId)[winningIndex];
+        address expectedWinner = lottery.getEntry(dayId, winningIndex);
 
         // Draw winner with USDC (different from the USDT in setUp)
         uint256 usdcPrizeAmount = 500 * 10 ** 6; // 500 USDC

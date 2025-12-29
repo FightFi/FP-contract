@@ -420,12 +420,14 @@ contract DailyLottery is
     }
 
     /**
-     * @notice Get all entries for a specific day
+     * @notice Get entry address at a specific index for a given day
      * @param dayId Day identifier
-     * @return Array of user addresses (one per entry)
+     * @param index Index of the entry
+     * @return Address of the user at the specified index
      */
-    function getEntries(uint256 dayId) external view returns (address[] memory) {
-        return entries[dayId];
+    function getEntry(uint256 dayId, uint256 index) external view returns (address) {
+        require(index < entries[dayId].length, "Index out of bounds");
+        return entries[dayId][index];
     }
 
     /**
