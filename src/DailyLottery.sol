@@ -117,7 +117,6 @@ contract DailyLottery is
         uint256 seasonId, uint256 entryPrice, uint256 maxEntriesPerUser, uint256 maxFreeEntriesPerUser
     );
 
-
     // ============ Initializer ============
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
