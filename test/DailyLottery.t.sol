@@ -94,10 +94,10 @@ contract DailyLotteryTest is Test {
 
         // Mint initial FP to users
         vm.startPrank(admin);
-        fpToken.mint(user1, 324001, INITIAL_FP_BALANCE, "");
-        fpToken.mint(user2, 324001, INITIAL_FP_BALANCE, "");
-        fpToken.mint(user3, 324001, INITIAL_FP_BALANCE, "");
-        fpToken.mint(admin, 324001, PRIZE_AMOUNT_FP * 5, ""); // For prize pool
+        fpToken.mint(user1, 324_001, INITIAL_FP_BALANCE, "");
+        fpToken.mint(user2, 324_001, INITIAL_FP_BALANCE, "");
+        fpToken.mint(user3, 324_001, INITIAL_FP_BALANCE, "");
+        fpToken.mint(admin, 324_001, PRIZE_AMOUNT_FP * 5, ""); // For prize pool
         vm.stopPrank();
 
         // Mint USDT to admin for prize pool
@@ -122,7 +122,7 @@ contract DailyLotteryTest is Test {
     function test_Initialize() public view {
         assertEq(address(lottery.fpToken()), address(fpToken), "FP token address mismatch");
         assertTrue(lottery.hasRole(lottery.LOTTERY_ADMIN_ROLE(), admin), "Admin should have LOTTERY_ADMIN_ROLE");
-        assertEq(lottery.defaultSeasonId(), 324001, "Default season ID should be 324001");
+        assertEq(lottery.defaultSeasonId(), 324_001, "Default season ID should be 324001");
         assertEq(lottery.defaultEntryPrice(), 1, "Default entry price should be 1");
         assertEq(lottery.defaultMaxEntriesPerUser(), 10, "Default max entries should be 10");
         assertEq(lottery.defaultMaxFreeEntriesPerUser(), 1, "Default max free entries should be 1");
@@ -144,13 +144,13 @@ contract DailyLotteryTest is Test {
 
         vm.prank(user1);
         vm.expectEmit(true, true, true, true);
-        emit LotteryRoundCreated(dayId, 324001, 1, 10, 1); // Using defaults: season=324001, price=1, max=10, maxFree=1
+        emit LotteryRoundCreated(dayId, 324_001, 1, 10, 1); // Using defaults: season=324001, price=1, max=10, maxFree=1
         lottery.claimFreeEntry(sig);
 
         // Round should now exist with defaults
         DailyLottery.LotteryRound memory round = lottery.getLotteryRound(dayId);
         assertEq(round.dayId, dayId, "Day ID mismatch");
-        assertEq(round.seasonId, 324001, "Season ID should be default (324001)");
+        assertEq(round.seasonId, 324_001, "Season ID should be default (324001)");
         assertEq(round.entryPrice, 1, "Entry price should be default (1)");
         assertEq(round.maxEntriesPerUser, 10, "Max entries should be default (10)");
         assertEq(round.totalEntries, 1, "Should have 1 entry");
@@ -369,7 +369,7 @@ contract DailyLotteryTest is Test {
         vm.prank(user1);
         lottery.claimFreeEntry(sig);
 
-        uint256 balanceBefore = fpToken.balanceOf(user1, 324001);
+        uint256 balanceBefore = fpToken.balanceOf(user1, 324_001);
 
         // Buy 2 more entries (one at a time)
         vm.prank(user1);
@@ -385,7 +385,7 @@ contract DailyLotteryTest is Test {
         assertEq(lottery.getUserEntries(dayId, user1), 3, "User should have 3 entries");
         assertEq(lottery.getTotalEntries(dayId), 3, "Total entries should be 3");
 
-        uint256 balanceAfter = fpToken.balanceOf(user1, 324001);
+        uint256 balanceAfter = fpToken.balanceOf(user1, 324_001);
         assertEq(balanceBefore - balanceAfter, 2, "Should burn 2 FP (2 entries * 1 price)");
 
         // Verify totalPaid tracks the paid entries (2 entries * 1 price = 2)
@@ -530,12 +530,12 @@ contract DailyLotteryTest is Test {
         uint256 winningIndex = 0; // Pick first entry for testing
 
         address expectedWinner = lottery.getEntry(dayId, winningIndex);
-        uint256 winnerBalanceBefore = fpToken.balanceOf(expectedWinner, 324001);
-        uint256 adminBalanceBefore = fpToken.balanceOf(admin, 324001);
+        uint256 winnerBalanceBefore = fpToken.balanceOf(expectedWinner, 324_001);
+        uint256 adminBalanceBefore = fpToken.balanceOf(admin, 324_001);
 
         // Draw winner (admin transfers prize directly)
         DailyLottery.PrizeData memory prize = DailyLottery.PrizeData({
-            prizeType: DailyLottery.PrizeType.FP, tokenAddress: address(0), seasonId: 324001, amount: PRIZE_AMOUNT_FP
+            prizeType: DailyLottery.PrizeType.FP, tokenAddress: address(0), seasonId: 324_001, amount: PRIZE_AMOUNT_FP
         });
 
         vm.prank(admin);
@@ -549,12 +549,12 @@ contract DailyLotteryTest is Test {
         // Verify prize data is stored
         assertEq(uint256(round.prizeType), uint256(DailyLottery.PrizeType.FP), "Prize type should be FP");
         assertEq(round.prizeTokenAddress, address(0), "Prize token address should be address(0) for FP");
-        assertEq(round.prizeSeasonId, 324001, "Prize season ID should match");
+        assertEq(round.prizeSeasonId, 324_001, "Prize season ID should match");
         assertEq(round.prizeAmount, PRIZE_AMOUNT_FP, "Prize amount should match");
 
         // Verify prize was transferred from admin to winner
-        uint256 winnerBalanceAfter = fpToken.balanceOf(expectedWinner, 324001);
-        uint256 adminBalanceAfter = fpToken.balanceOf(admin, 324001);
+        uint256 winnerBalanceAfter = fpToken.balanceOf(expectedWinner, 324_001);
+        uint256 adminBalanceAfter = fpToken.balanceOf(admin, 324_001);
         assertEq(winnerBalanceAfter - winnerBalanceBefore, PRIZE_AMOUNT_FP, "Winner should have received prize");
         assertEq(adminBalanceBefore - adminBalanceAfter, PRIZE_AMOUNT_FP, "Admin should have sent prize");
     }
@@ -602,7 +602,7 @@ contract DailyLotteryTest is Test {
         // Round doesn't exist yet (not auto-created since no user participated)
         // Expect LotteryNotActive error instead of NoEntries
         DailyLottery.PrizeData memory prize = DailyLottery.PrizeData({
-            prizeType: DailyLottery.PrizeType.FP, tokenAddress: address(0), seasonId: 324001, amount: PRIZE_AMOUNT_FP
+            prizeType: DailyLottery.PrizeType.FP, tokenAddress: address(0), seasonId: 324_001, amount: PRIZE_AMOUNT_FP
         });
 
         vm.prank(admin);
@@ -620,7 +620,7 @@ contract DailyLotteryTest is Test {
 
         // Draw winner
         DailyLottery.PrizeData memory prize = DailyLottery.PrizeData({
-            prizeType: DailyLottery.PrizeType.FP, tokenAddress: address(0), seasonId: 324001, amount: PRIZE_AMOUNT_FP
+            prizeType: DailyLottery.PrizeType.FP, tokenAddress: address(0), seasonId: 324_001, amount: PRIZE_AMOUNT_FP
         });
 
         vm.prank(admin);
@@ -644,7 +644,7 @@ contract DailyLotteryTest is Test {
 
         // Try to draw with invalid index (>= totalEntries)
         DailyLottery.PrizeData memory prize = DailyLottery.PrizeData({
-            prizeType: DailyLottery.PrizeType.FP, tokenAddress: address(0), seasonId: 324001, amount: PRIZE_AMOUNT_FP
+            prizeType: DailyLottery.PrizeType.FP, tokenAddress: address(0), seasonId: 324_001, amount: PRIZE_AMOUNT_FP
         });
 
         vm.prank(admin);
@@ -661,7 +661,7 @@ contract DailyLotteryTest is Test {
         setupThreeUsersWithEntries();
 
         DailyLottery.PrizeData memory prize = DailyLottery.PrizeData({
-            prizeType: DailyLottery.PrizeType.FP, tokenAddress: address(0), seasonId: 324001, amount: PRIZE_AMOUNT_FP
+            prizeType: DailyLottery.PrizeType.FP, tokenAddress: address(0), seasonId: 324_001, amount: PRIZE_AMOUNT_FP
         });
 
         vm.prank(admin);
@@ -942,10 +942,10 @@ contract DailyLotteryTest is Test {
         lottery.claimFreeEntry(sig);
 
         // Buy entry with original price (1 FP)
-        uint256 balanceBeforeUpdate = fpToken.balanceOf(user1, 324001);
+        uint256 balanceBeforeUpdate = fpToken.balanceOf(user1, 324_001);
         vm.prank(user1);
         lottery.buyEntry();
-        uint256 balanceAfterUpdate = fpToken.balanceOf(user1, 324001);
+        uint256 balanceAfterUpdate = fpToken.balanceOf(user1, 324_001);
         assertEq(balanceBeforeUpdate - balanceAfterUpdate, 1, "Should burn 1 FP with original price");
 
         // Verify user has 2 entries now
@@ -968,10 +968,10 @@ contract DailyLotteryTest is Test {
         assertEq(round.maxFreeEntriesPerUser, newMaxFreeEntriesPerUser, "Max free entries should be updated");
 
         // Buy another entry with new price (3 FP)
-        uint256 balanceBeforeNewPrice = fpToken.balanceOf(user1, 324001);
+        uint256 balanceBeforeNewPrice = fpToken.balanceOf(user1, 324_001);
         vm.prank(user1);
         lottery.buyEntry();
-        uint256 balanceAfterNewPrice = fpToken.balanceOf(user1, 324001);
+        uint256 balanceAfterNewPrice = fpToken.balanceOf(user1, 324_001);
         assertEq(balanceBeforeNewPrice - balanceAfterNewPrice, 3, "Should burn 3 FP with new price");
 
         // Verify user has 3 entries total
@@ -998,7 +998,7 @@ contract DailyLotteryTest is Test {
         setupThreeUsersWithEntries();
 
         DailyLottery.PrizeData memory prize = DailyLottery.PrizeData({
-            prizeType: DailyLottery.PrizeType.FP, tokenAddress: address(0), seasonId: 324001, amount: PRIZE_AMOUNT_FP
+            prizeType: DailyLottery.PrizeType.FP, tokenAddress: address(0), seasonId: 324_001, amount: PRIZE_AMOUNT_FP
         });
 
         vm.prank(admin);

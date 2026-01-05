@@ -148,7 +148,7 @@ contract DailyLottery is
         _grantRole(FREE_ENTRY_SIGNER_ROLE, _lotteryAdmin);
 
         // Set default values for auto-created rounds
-        defaultSeasonId = 324001;
+        defaultSeasonId = 324_001;
         defaultEntryPrice = 1;
         defaultMaxEntriesPerUser = 10;
         defaultMaxFreeEntriesPerUser = 1;
