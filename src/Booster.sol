@@ -139,7 +139,8 @@ contract Booster is
         uint256 boostIndex,
         uint256 amount,
         Corner winner,
-        WinMethod method
+        WinMethod method,
+        uint256 timestamp
     );
     event BoostIncreased(
         string indexed eventId,
@@ -147,7 +148,8 @@ contract Booster is
         address indexed user,
         uint256 boostIndex,
         uint256 additionalAmount,
-        uint256 newTotal
+        uint256 newTotal,
+        uint256 timestamp
     );
     event FightResultSubmitted(
         string indexed eventId,
@@ -598,7 +600,8 @@ contract Booster is
                 boostIndex,
                 input.amount,
                 input.predictedWinner,
-                input.predictedMethod
+                input.predictedMethod,
+                block.timestamp
             );
         }
 
@@ -645,7 +648,7 @@ contract Booster is
         boost.amount += additionalAmount;
         fight.originalPool += additionalAmount;
 
-        emit BoostIncreased(eventId, fightId, msg.sender, boostIndex, additionalAmount, boost.amount);
+        emit BoostIncreased(eventId, fightId, msg.sender, boostIndex, additionalAmount, boost.amount, block.timestamp);
     }
 
     /**
@@ -1060,17 +1063,14 @@ contract Booster is
         internal
         returns (uint256 payout)
     {
-        Event storage evt = events[eventId];
-        _validateFightId(evt, fightId);
+        _validateFightId(events[eventId], fightId);
 
         Fight storage fight = fights[eventId][fightId];
         require(fight.status == FightStatus.RESOLVED, "not resolved");
 
-        Boost[] storage fightBoosts = boosts[eventId][fightId];
-
         // Handle cancelled fight (full refund of principal)
         if (fight.cancelled) {
-            payout = _processCancelledBoostRefund(fightBoosts, boostIndices, user);
+            payout = _processCancelledBoostRefund(boosts[eventId][fightId], boostIndices, user);
             require(payout > 0, "nothing to refund");
             fight.claimedAmount += payout;
             return payout;
@@ -1087,7 +1087,7 @@ contract Booster is
 
         uint256 prizePool = fight.originalPool - fight.sumWinnersStakes + fight.bonusPool;
         for (uint256 i = 0; i < boostIndices.length; i++) {
-            payout += _processWinningBoostClaim(eventId, fightId, fight, fightBoosts, boostIndices[i], user, prizePool);
+            payout += _processWinningBoostClaim(eventId, fightId, fight, boosts[eventId][fightId], boostIndices[i], user, prizePool);
         }
         return payout;
     }
