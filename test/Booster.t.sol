@@ -196,7 +196,7 @@ contract BoosterTest is Test {
 
         vm.prank(user1);
         vm.expectEmit(true, true, true, true);
-        emit Booster.BoostPlaced(EVENT_1, FIGHT_1, user1, 0, 100 ether, Booster.Corner.RED, Booster.WinMethod.KNOCKOUT);
+        emit Booster.BoostPlaced(EVENT_1, FIGHT_1, user1, 0, 100 ether, Booster.Corner.RED, Booster.WinMethod.KNOCKOUT, block.timestamp);
         booster.placeBoosts(EVENT_1, boosts);
 
         // Verify boosts created
@@ -316,7 +316,7 @@ contract BoosterTest is Test {
         // Add to boost
         vm.prank(user1);
         vm.expectEmit(true, true, true, true);
-        emit Booster.BoostIncreased(EVENT_1, FIGHT_1, user1, 0, 50 ether, 150 ether);
+        emit Booster.BoostIncreased(EVENT_1, FIGHT_1, user1, 0, 50 ether, 150 ether, block.timestamp);
         booster.addToBoost(EVENT_1, FIGHT_1, 0, 50 ether);
 
         // Verify boost amount increased

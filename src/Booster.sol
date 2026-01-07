@@ -139,7 +139,8 @@ contract Booster is
         uint256 boostIndex,
         uint256 amount,
         Corner winner,
-        WinMethod method
+        WinMethod method,
+        uint256 timestamp
     );
     event BoostIncreased(
         string indexed eventId,
@@ -147,7 +148,8 @@ contract Booster is
         address indexed user,
         uint256 boostIndex,
         uint256 additionalAmount,
-        uint256 newTotal
+        uint256 newTotal,
+        uint256 timestamp
     );
     event FightResultSubmitted(
         string indexed eventId,
@@ -598,7 +600,8 @@ contract Booster is
                 boostIndex,
                 input.amount,
                 input.predictedWinner,
-                input.predictedMethod
+                input.predictedMethod,
+                block.timestamp
             );
         }
 
@@ -645,7 +648,7 @@ contract Booster is
         boost.amount += additionalAmount;
         fight.originalPool += additionalAmount;
 
-        emit BoostIncreased(eventId, fightId, msg.sender, boostIndex, additionalAmount, boost.amount);
+        emit BoostIncreased(eventId, fightId, msg.sender, boostIndex, additionalAmount, boost.amount, block.timestamp);
     }
 
     /**
@@ -862,6 +865,42 @@ contract Booster is
         view
         returns (uint256 totalClaimable)
     {
+        return _quoteClaimableInternal(eventId, fightId, user, enforceDeadline, false);
+    }
+
+    /**
+     * @notice Quote historical claimable payout for a user (including already claimed boosts)
+     * @dev Returns the amount that was claimable when the fight resolved, regardless of whether
+     *      boosts have already been claimed. Useful for historical analysis.
+     *      Only includes winning boosts. Does NOT enforce deadline by default.
+     * @param eventId Event identifier
+     * @param fightId Fight number
+     * @param user User address
+     * @param enforceDeadline Whether to revert if claim deadline passed
+     */
+    function quoteHistoricalClaimable(string calldata eventId, uint256 fightId, address user, bool enforceDeadline)
+        external
+        view
+        returns (uint256 totalHistoricalClaimable)
+    {
+        return _quoteClaimableInternal(eventId, fightId, user, enforceDeadline, true);
+    }
+
+    /**
+     * @notice Internal function to calculate claimable amounts
+     * @param eventId Event identifier
+     * @param fightId Fight number
+     * @param user User address
+     * @param enforceDeadline Whether to revert if claim deadline passed
+     * @param includeClaimed Whether to include already claimed boosts
+     */
+    function _quoteClaimableInternal(
+        string calldata eventId,
+        uint256 fightId,
+        address user,
+        bool enforceDeadline,
+        bool includeClaimed
+    ) internal view returns (uint256 totalClaimable) {
         Event storage evt = events[eventId];
         require(evt.exists, "event not exists");
         Fight storage fight = fights[eventId][fightId];
@@ -881,7 +920,7 @@ contract Booster is
         uint256 prizePool = fight.originalPool - fight.sumWinnersStakes + fight.bonusPool;
         for (uint256 i = 0; i < indices.length; i++) {
             Boost storage boost = boosts[eventId][fightId][indices[i]];
-            if (boost.claimed) continue;
+            if (!includeClaimed && boost.claimed) continue;
             if (boost.user != user) continue; // defensive
             uint256 points = calculateUserPoints(
                 boost.predictedWinner,
