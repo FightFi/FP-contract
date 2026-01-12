@@ -53,7 +53,15 @@ contract StakingTest is Test {
         fightToken.approve(address(staking), STAKE_AMOUNT);
 
         vm.expectEmit(true, false, false, true);
-        emit Staking.Staked(user1, STAKE_AMOUNT, block.timestamp);
+        emit Staking.Staked(
+            user1,
+            STAKE_AMOUNT,
+            0, // userBalanceBefore (0 before first stake)
+            STAKE_AMOUNT, // userBalanceAfter
+            STAKE_AMOUNT, // totalStakedAfter
+            block.timestamp,
+            block.number
+        );
 
         vm.prank(user1);
         staking.stake(STAKE_AMOUNT);
@@ -163,7 +171,15 @@ contract StakingTest is Test {
         staking.stake(STAKE_AMOUNT);
 
         vm.expectEmit(true, false, false, true);
-        emit Staking.Unstaked(user1, STAKE_AMOUNT, block.timestamp);
+        emit Staking.Unstaked(
+            user1,
+            STAKE_AMOUNT,
+            STAKE_AMOUNT, // userBalanceBefore (STAKE_AMOUNT before unstaking)
+            0, // userBalanceAfter (0 after unstaking all)
+            0, // totalStakedAfter (0 after unstaking all)
+            block.timestamp,
+            block.number
+        );
 
         vm.prank(user1);
         staking.unstake(STAKE_AMOUNT);

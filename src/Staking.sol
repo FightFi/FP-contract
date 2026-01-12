@@ -24,8 +24,24 @@ contract Staking is Ownable2Step, Pausable, ReentrancyGuard {
     mapping(address => uint256) public balances;
 
     // Events
-    event Staked(address indexed user, uint256 amount, uint256 timestamp);
-    event Unstaked(address indexed user, uint256 amount, uint256 timestamp);
+    event Staked(
+        address indexed user,
+        uint256 amount,
+        uint256 userBalanceBefore,
+        uint256 userBalanceAfter,
+        uint256 totalStakedAfter,
+        uint256 timestamp,
+        uint256 blockNumber
+    );
+    event Unstaked(
+        address indexed user,
+        uint256 amount,
+        uint256 userBalanceBefore,
+        uint256 userBalanceAfter,
+        uint256 totalStakedAfter,
+        uint256 timestamp,
+        uint256 blockNumber
+    );
 
     /**
      * @notice Constructor
@@ -44,10 +60,13 @@ contract Staking is Ownable2Step, Pausable, ReentrancyGuard {
     function stake(uint256 amount) external whenNotPaused nonReentrant {
         require(amount > 0, "Zero amount");
 
+        uint256 userBalanceBefore = balances[msg.sender];
         balances[msg.sender] += amount;
         totalStaked += amount;
 
-        emit Staked(msg.sender, amount, block.timestamp);
+        emit Staked(
+            msg.sender, amount, userBalanceBefore, balances[msg.sender], totalStaked, block.timestamp, block.number
+        );
 
         FIGHT_TOKEN.safeTransferFrom(msg.sender, address(this), amount);
     }
@@ -60,10 +79,13 @@ contract Staking is Ownable2Step, Pausable, ReentrancyGuard {
         require(amount > 0, "Zero amount");
         require(balances[msg.sender] >= amount, "Insufficient balance");
 
+        uint256 userBalanceBefore = balances[msg.sender];
         balances[msg.sender] -= amount;
         totalStaked -= amount;
 
-        emit Unstaked(msg.sender, amount, block.timestamp);
+        emit Unstaked(
+            msg.sender, amount, userBalanceBefore, balances[msg.sender], totalStaked, block.timestamp, block.number
+        );
 
         FIGHT_TOKEN.safeTransfer(msg.sender, amount);
     }
