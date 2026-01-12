@@ -15,11 +15,9 @@
 //
 //
 // Con verificación (Foundry usa BSCSCAN_API_KEY de foundry.toml si está en .env):
-// forge script script/DeployStaking.s.sol:DeployStaking \
-//   --rpc-url https://bsc-testnet.publicnode.com \
-//   --broadcast \
-//   --verify \
-//   -vvvv
+//  forge script script/DeployStaking.s.sol:DeployStaking  \
+//  --rpc-url "https://bsc-testnet.publicnode.com"  \
+//  --broadcast --verify --with-gas-price 20000000000 --priority-gas-price 2000000000 -vv
 //
 // Nota: 
 // - Foundry lee PRIVATE_KEY y FIGHT_TOKEN_ADDRESS desde .env automáticamente
