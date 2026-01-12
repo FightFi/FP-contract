@@ -1,7 +1,7 @@
 // how to deploy:
-// 
+//
 // Testnet (BSC Testnet):
-// 
+//
 // 1. Asegúrate de tener las variables en .env o exportadas:
 //    PRIVATE_KEY=0x...
 //    FIGHT_TOKEN_ADDRESS=0x...
@@ -19,7 +19,7 @@
 //  --rpc-url "https://bsc-testnet.publicnode.com"  \
 //  --broadcast --verify --with-gas-price 20000000000 --priority-gas-price 2000000000 -vv
 //
-// Nota: 
+// Nota:
 // - Foundry lee PRIVATE_KEY y FIGHT_TOKEN_ADDRESS desde .env automáticamente
 // - BSCSCAN_API_KEY se lee desde foundry.toml (que usa ${BSCSCAN_API_KEY} del .env)
 // - Si BSCSCAN_API_KEY no está definida, omite --verify
