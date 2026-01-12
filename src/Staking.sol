@@ -91,15 +91,6 @@ contract Staking is Ownable2Step, Pausable, ReentrancyGuard {
     }
 
     /**
-     * @notice Get user balance
-     * @param user Address of the user
-     * @return User's staked balance
-     */
-    function getBalance(address user) external view returns (uint256) {
-        return balances[user];
-    }
-
-    /**
      * @notice Pause contract
      */
     function pause() external onlyOwner {

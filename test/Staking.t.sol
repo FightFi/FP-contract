@@ -345,8 +345,8 @@ contract StakingTest is Test {
         vm.prank(user1);
         staking.stake(STAKE_AMOUNT);
 
-        assertEq(staking.getBalance(user1), STAKE_AMOUNT);
-        assertEq(staking.getBalance(user2), 0);
+        assertEq(staking.balances(user1), STAKE_AMOUNT);
+        assertEq(staking.balances(user2), 0);
     }
 
     function test_GetFightToken() public view {

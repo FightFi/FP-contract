@@ -16,7 +16,7 @@ import { ethers } from "ethers";
 const STAKING_ABI = [
   "function stake(uint256 amount) external",
   "function unstake(uint256 amount) external",
-  "function getBalance(address user) external view returns (uint256)",
+  "function balances(address user) external view returns (uint256)",
   "function totalStaked() external view returns (uint256)",
   "function paused() external view returns (bool)",
   "function FIGHT_TOKEN() external view returns (address)",
@@ -101,7 +101,7 @@ async function main() {
 
   // Get balances
   const tokenBalance = await fightToken.balanceOf(wallet.address);
-  const stakedBalance = await staking.getBalance(wallet.address);
+  const stakedBalance = await staking.balances(wallet.address);
   const totalStaked = await staking.totalStaked();
 
   console.log(`=== Current Balances ===`);
@@ -164,7 +164,7 @@ async function main() {
 
     // Verify new balances
     const newTokenBalance = await fightToken.balanceOf(wallet.address);
-    const newStakedBalance = await staking.getBalance(wallet.address);
+    const newStakedBalance = await staking.balances(wallet.address);
     const newTotalStaked = await staking.totalStaked();
 
     console.log(`\n✓ Stake complete!`);
@@ -189,7 +189,7 @@ async function main() {
 
     // Verify new balances
     const newTokenBalance = await fightToken.balanceOf(wallet.address);
-    const newStakedBalance = await staking.getBalance(wallet.address);
+    const newStakedBalance = await staking.balances(wallet.address);
     const newTotalStaked = await staking.totalStaked();
 
     console.log(`\n✓ Unstake complete!`);
