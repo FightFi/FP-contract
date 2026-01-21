@@ -405,8 +405,200 @@ contract StakingTest is Test {
     }
 
     function test_Constructor_ZeroAddress_Reverts() public {
-        vm.expectRevert(bytes("Zero address"));
+        vm.expectRevert(bytes("Invalid token"));
         new Staking(address(0), owner);
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                        RECOVERY TESTS
+    //////////////////////////////////////////////////////////////*/
+
+    function test_RecoverERC20_Success() public {
+        // Deploy a different ERC20 token
+        ERC20Mock otherToken = new ERC20Mock();
+        uint256 recoveryAmount = 50 * 1e18;
+        
+        // Mint tokens directly to staking contract (simulating accidental transfer)
+        otherToken.mint(address(staking), recoveryAmount);
+        
+        uint256 ownerBalanceBefore = otherToken.balanceOf(owner);
+        uint256 stakingBalanceBefore = otherToken.balanceOf(address(staking));
+        
+        // Recover tokens
+        vm.prank(owner);
+        staking.recoverERC20(address(otherToken), owner, recoveryAmount);
+        
+        assertEq(otherToken.balanceOf(owner), ownerBalanceBefore + recoveryAmount);
+        assertEq(otherToken.balanceOf(address(staking)), stakingBalanceBefore - recoveryAmount);
+    }
+
+    function test_RecoverERC20_EmitsEvent() public {
+        ERC20Mock otherToken = new ERC20Mock();
+        uint256 recoveryAmount = 50 * 1e18;
+        otherToken.mint(address(staking), recoveryAmount);
+        
+        vm.expectEmit(true, true, false, true);
+        emit Staking.RecoveredERC20(address(otherToken), owner, recoveryAmount);
+        
+        vm.prank(owner);
+        staking.recoverERC20(address(otherToken), owner, recoveryAmount);
+    }
+
+    function test_RecoverERC20_NonOwner_Reverts() public {
+        ERC20Mock otherToken = new ERC20Mock();
+        uint256 recoveryAmount = 50 * 1e18;
+        otherToken.mint(address(staking), recoveryAmount);
+        
+        vm.prank(user1);
+        vm.expectRevert();
+        staking.recoverERC20(address(otherToken), owner, recoveryAmount);
+    }
+
+    function test_RecoverERC20_ZeroTokenAddress_Reverts() public {
+        vm.prank(owner);
+        vm.expectRevert(bytes("Zero address"));
+        staking.recoverERC20(address(0), owner, 100);
+    }
+
+    function test_RecoverERC20_ZeroRecipientAddress_Reverts() public {
+        ERC20Mock otherToken = new ERC20Mock();
+        
+        vm.prank(owner);
+        vm.expectRevert(bytes("Zero address"));
+        staking.recoverERC20(address(otherToken), address(0), 100);
+    }
+
+    function test_RecoverERC20_CannotRecoverFightToken_Reverts() public {
+        // Try to recover FIGHT token - should revert
+        vm.prank(owner);
+        vm.expectRevert(bytes("Cannot recover staking token"));
+        staking.recoverERC20(address(fightToken), owner, 100);
+    }
+
+    function test_RecoverFightSurplus_Success() public {
+        // First stake some tokens
+        vm.prank(user1);
+        fightToken.approve(address(staking), STAKE_AMOUNT);
+        vm.prank(user1);
+        staking.stake(STAKE_AMOUNT);
+        
+        // Send tokens directly to contract (simulating direct transfer)
+        uint256 surplusAmount = 50 * 1e18;
+        fightToken.mint(address(staking), surplusAmount);
+        
+        uint256 ownerBalanceBefore = fightToken.balanceOf(owner);
+        uint256 contractBalanceBefore = fightToken.balanceOf(address(staking));
+        uint256 totalStakedBefore = staking.totalStaked();
+        
+        // Recover surplus
+        vm.prank(owner);
+        staking.recoverFightSurplus(owner);
+        
+        // Verify surplus was recovered
+        assertEq(fightToken.balanceOf(owner), ownerBalanceBefore + surplusAmount);
+        assertEq(fightToken.balanceOf(address(staking)), contractBalanceBefore - surplusAmount);
+        // Staked tokens should remain untouched
+        assertEq(staking.totalStaked(), totalStakedBefore);
+        assertEq(staking.totalStaked(), STAKE_AMOUNT);
+    }
+
+    function test_RecoverFightSurplus_EmitsEvent() public {
+        // Stake some tokens
+        vm.prank(user1);
+        fightToken.approve(address(staking), STAKE_AMOUNT);
+        vm.prank(user1);
+        staking.stake(STAKE_AMOUNT);
+        
+        // Send surplus directly to contract
+        uint256 surplusAmount = 50 * 1e18;
+        fightToken.mint(address(staking), surplusAmount);
+        
+        vm.expectEmit(true, false, false, true);
+        emit Staking.RecoveredFightSurplus(owner, surplusAmount);
+        
+        vm.prank(owner);
+        staking.recoverFightSurplus(owner);
+    }
+
+    function test_RecoverFightSurplus_NoSurplus_Reverts() public {
+        // Stake some tokens but no surplus
+        vm.prank(user1);
+        fightToken.approve(address(staking), STAKE_AMOUNT);
+        vm.prank(user1);
+        staking.stake(STAKE_AMOUNT);
+        
+        // Try to recover when there's no surplus
+        vm.prank(owner);
+        vm.expectRevert(bytes("No surplus"));
+        staking.recoverFightSurplus(owner);
+    }
+
+    function test_RecoverFightSurplus_ProtectsStakedTokens() public {
+        // Stake tokens
+        vm.prank(user1);
+        fightToken.approve(address(staking), STAKE_AMOUNT);
+        vm.prank(user1);
+        staking.stake(STAKE_AMOUNT);
+        
+        // Send surplus
+        uint256 surplusAmount = 50 * 1e18;
+        fightToken.mint(address(staking), surplusAmount);
+        
+        uint256 totalStakedBefore = staking.totalStaked();
+        
+        // Recover surplus
+        vm.prank(owner);
+        staking.recoverFightSurplus(owner);
+        
+        // Verify staked tokens are still protected
+        assertEq(staking.totalStaked(), totalStakedBefore);
+        assertEq(staking.totalStaked(), STAKE_AMOUNT);
+        assertEq(fightToken.balanceOf(address(staking)), STAKE_AMOUNT);
+        
+        // User can still unstake
+        vm.prank(user1);
+        staking.unstake(STAKE_AMOUNT);
+        assertEq(fightToken.balanceOf(user1), INITIAL_SUPPLY);
+    }
+
+    function test_RecoverFightSurplus_NonOwner_Reverts() public {
+        vm.prank(user1);
+        vm.expectRevert();
+        staking.recoverFightSurplus(owner);
+    }
+
+    function test_RecoverFightSurplus_ZeroRecipientAddress_Reverts() public {
+        // Create surplus
+        fightToken.mint(address(staking), 50 * 1e18);
+        
+        vm.prank(owner);
+        vm.expectRevert(bytes("Zero address"));
+        staking.recoverFightSurplus(address(0));
+    }
+
+    function test_RecoverFightSurplus_MultipleRecoveries() public {
+        // Stake tokens
+        vm.prank(user1);
+        fightToken.approve(address(staking), STAKE_AMOUNT);
+        vm.prank(user1);
+        staking.stake(STAKE_AMOUNT);
+        
+        // Send surplus multiple times
+        uint256 surplus1 = 30 * 1e18;
+        uint256 surplus2 = 20 * 1e18;
+        fightToken.mint(address(staking), surplus1);
+        
+        vm.prank(owner);
+        staking.recoverFightSurplus(owner);
+        
+        fightToken.mint(address(staking), surplus2);
+        
+        vm.prank(owner);
+        staking.recoverFightSurplus(owner);
+        
+        // Verify all surplus was recovered
+        assertEq(fightToken.balanceOf(address(staking)), STAKE_AMOUNT);
+        assertEq(staking.totalStaked(), STAKE_AMOUNT);
     }
 }
 

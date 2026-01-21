@@ -42,6 +42,8 @@ contract Staking is Ownable2Step, Pausable, ReentrancyGuard {
         uint256 timestamp,
         uint256 blockNumber
     );
+    event RecoveredERC20(address indexed token, address indexed to, uint256 amount);
+    event RecoveredFightSurplus(address indexed to, uint256 amount);
 
     /**
      * @notice Constructor
@@ -102,5 +104,40 @@ contract Staking is Ownable2Step, Pausable, ReentrancyGuard {
      */
     function unpause() external onlyOwner {
         _unpause();
+    }
+
+    /**
+     * @notice Recover ERC20 tokens accidentally sent to this contract
+     * @dev Only allows recovery of tokens that are NOT the staking token (FIGHT_TOKEN)
+     *      This protects staked tokens while allowing recovery of accidentally sent tokens
+     * @param token Address of the token to recover
+     * @param to Address to send recovered tokens to
+     * @param amount Amount of tokens to recover
+     */
+    function recoverERC20(address token, address to, uint256 amount) external onlyOwner {
+        require(token != address(0), "Zero address");
+        require(to != address(0), "Zero address");
+        require(token != address(FIGHT_TOKEN), "Cannot recover staking token");
+        
+        IERC20(token).safeTransfer(to, amount);
+        emit RecoveredERC20(token, to, amount);
+    }
+
+    /**
+     * @notice Recover surplus FIGHT tokens sent directly to this contract
+     * @dev Only allows recovery of tokens that exceed totalStaked (surplus)
+     *      Protects all staked tokens by only allowing recovery of the difference
+     *      between contract balance and totalStaked
+     * @param to Address to send recovered tokens to
+     */
+    function recoverFightSurplus(address to) external onlyOwner {
+        require(to != address(0), "Zero address");
+        
+        uint256 contractBalance = FIGHT_TOKEN.balanceOf(address(this));
+        require(contractBalance > totalStaked, "No surplus");
+        
+        uint256 surplus = contractBalance - totalStaked;
+        FIGHT_TOKEN.safeTransfer(to, surplus);
+        emit RecoveredFightSurplus(to, surplus);
     }
 }
