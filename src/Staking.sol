@@ -126,7 +126,7 @@ contract Staking is Ownable2Step, Pausable, ReentrancyGuard {
         require(token != address(0), "Zero address");
         require(to != address(0), "Zero address");
         require(token != address(FIGHT_TOKEN), "Cannot recover staking token");
-        
+
         IERC20(token).safeTransfer(to, amount);
         emit RecoveredERC20(token, to, amount);
     }
@@ -140,10 +140,10 @@ contract Staking is Ownable2Step, Pausable, ReentrancyGuard {
      */
     function recoverFightSurplus(address to) external onlyOwner {
         require(to != address(0), "Zero address");
-        
+
         uint256 contractBalance = FIGHT_TOKEN.balanceOf(address(this));
         require(contractBalance > totalStaked, "No surplus");
-        
+
         uint256 surplus = contractBalance - totalStaked;
         FIGHT_TOKEN.safeTransfer(to, surplus);
         emit RecoveredFightSurplus(to, surplus);
