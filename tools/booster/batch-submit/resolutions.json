@@ -1,0 +1,85 @@
+{
+  "eventId": "ufc-324",
+  "fights": [
+    {
+      "fightId": 1,
+      "winner": "RED",
+      "method": "DECISION",
+      "pointsForWinner": "3",
+      "pointsForWinnerMethod": "4",
+      "sumWinnersStakes": "153511",
+      "winningPoolTotalShares": "465580",
+      "totalAmountStaked": "173548"
+    },
+    {
+      "fightId": 2,
+      "winner": "RED",
+      "method": "DECISION",
+      "pointsForWinner": "3",
+      "pointsForWinnerMethod": "4",
+      "sumWinnersStakes": "18055",
+      "winningPoolTotalShares": "68691",
+      "totalAmountStaked": "32760"
+    },
+    {
+      "fightId": 3,
+      "winner": "RED",
+      "method": "KNOCKOUT",
+      "pointsForWinner": "3",
+      "pointsForWinnerMethod": "4",
+      "sumWinnersStakes": "17896",
+      "winningPoolTotalShares": "68490",
+      "totalAmountStaked": "26101"
+    },
+    {
+      "fightId": 4,
+      "winner": "RED",
+      "method": "DECISION",
+      "pointsForWinner": "3",
+      "pointsForWinnerMethod": "4",
+      "sumWinnersStakes": "125026",
+      "winningPoolTotalShares": "387716",
+      "totalAmountStaked": "126104"
+    },
+    {
+      "fightId": 5,
+      "winner": "BLUE",
+      "method": "DECISION",
+      "pointsForWinner": "3",
+      "pointsForWinnerMethod": "4",
+      "sumWinnersStakes": "9638",
+      "winningPoolTotalShares": "32980",
+      "totalAmountStaked": "25524"
+    },
+    {
+      "fightId": 6,
+      "winner": "RED",
+      "method": "DECISION",
+      "pointsForWinner": "3",
+      "pointsForWinnerMethod": "4",
+      "sumWinnersStakes": "45584",
+      "winningPoolTotalShares": "157285",
+      "totalAmountStaked": "51045"
+    },
+    {
+      "fightId": 8,
+      "winner": "RED",
+      "method": "KNOCKOUT",
+      "pointsForWinner": "3",
+      "pointsForWinnerMethod": "4",
+      "sumWinnersStakes": "44581",
+      "winningPoolTotalShares": "166117",
+      "totalAmountStaked": "48353"
+    },
+    {
+      "fightId": 9,
+      "winner": "RED",
+      "method": "KNOCKOUT",
+      "pointsForWinner": "3",
+      "pointsForWinnerMethod": "4",
+      "sumWinnersStakes": "6631",
+      "winningPoolTotalShares": "25328",
+      "totalAmountStaked": "12963"
+    }
+  ]
+}

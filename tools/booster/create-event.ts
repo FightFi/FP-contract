@@ -3,8 +3,7 @@
 
  *
  * @example With network parameter
- * ts-node tools/booster/create-event.ts --network testnet --eventId ufc-325 --numFights 10 --seasonId 325 --defaultBoostCutoff 1769896800
- * ts-node tools/booster/create-event.ts --network mainnet --eventId ufc-325 --numFights 10 --seasonId 325 --defaultBoostCutoff 1769896800
+ * ts-node tools/booster/create-event.ts --network mainnet --eventId ufc-fight-night-dec-13-2025 --numFights 10 --seasonId 324001 --defaultBoostCutoff 1765666800
  */
 import "dotenv/config";
 import { ethers } from "ethers";
