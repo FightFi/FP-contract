@@ -662,6 +662,61 @@ contract BoosterTest is Test {
         assertEq(totalClaimable2, 200 ether, "User2 should get 200 ether refund quote (No Contest)");
     }
 
+    function test_quoteClaimableHistorical_cancelled_includesClaimed() public {
+        _createDefaultEvent();
+        _placeMultipleBoosts();
+
+        // Cancel fight
+        vm.prank(operator);
+        booster.cancelFight(EVENT_1, FIGHT_1);
+
+        _setEventClaimReady(EVENT_1);
+
+        // Quote before claiming
+        uint256 totalClaimableBefore = booster.quoteClaimable(EVENT_1, FIGHT_1, user1, false);
+        uint256 totalHistoricalBefore = booster.quoteClaimableHistorical(EVENT_1, FIGHT_1, user1);
+        assertEq(totalClaimableBefore, 100 ether);
+        assertEq(totalHistoricalBefore, 100 ether);
+
+        // Claim
+        uint256[] memory indices = booster.getUserBoostIndices(EVENT_1, FIGHT_1, user1);
+        vm.prank(user1);
+        booster.claimReward(EVENT_1, FIGHT_1, indices);
+
+        // After claiming
+        uint256 totalClaimableAfter = booster.quoteClaimable(EVENT_1, FIGHT_1, user1, false);
+        uint256 totalHistoricalAfter = booster.quoteClaimableHistorical(EVENT_1, FIGHT_1, user1);
+
+        assertEq(totalClaimableAfter, 0, "Current quote should be 0 after claim");
+        assertEq(totalHistoricalAfter, 100 ether, "Historical quote should still be 100 ether");
+    }
+
+    function testRevert_quoteClaimable_cancelled_afterDeadline() public {
+        // Create event with 1 hour deadline from now
+        uint256 deadline = block.timestamp + 1 hours;
+        vm.prank(operator);
+        booster.createEvent(EVENT_1, 10, SEASON_1, 0);
+        vm.prank(operator);
+        booster.setEventClaimDeadline(EVENT_1, deadline);
+
+        _placeMultipleBoosts();
+
+        // Cancel fight
+        vm.prank(operator);
+        booster.cancelFight(EVENT_1, FIGHT_1);
+
+        // Warp past deadline
+        vm.warp(deadline + 1);
+
+        // Should revert if enforceDeadline is true
+        vm.expectRevert("claim deadline passed");
+        booster.quoteClaimable(EVENT_1, FIGHT_1, user1, true);
+
+        // Should NOT revert if enforceDeadline is false
+        uint256 quote = booster.quoteClaimable(EVENT_1, FIGHT_1, user1, false);
+        assertEq(quote, 100 ether);
+    }
+
     function test_quoteClaimableHistorical_includesClaimed() public {
         _createDefaultEvent();
         _placeMultipleBoosts();
@@ -1198,6 +1253,28 @@ contract BoosterTest is Test {
         vm.prank(user1);
         booster.claimReward(EVENT_1, FIGHT_1, indices);
 
+        vm.prank(user1);
+        vm.expectRevert("already claimed");
+        booster.claimReward(EVENT_1, FIGHT_1, indices);
+    }
+
+    function testRevert_claimReward_cancelled_alreadyClaimed() public {
+        _createDefaultEvent();
+        _placeMultipleBoosts();
+
+        // Cancel fight
+        vm.prank(operator);
+        booster.cancelFight(EVENT_1, FIGHT_1);
+
+        _setEventClaimReady(EVENT_1);
+
+        uint256[] memory indices = booster.getUserBoostIndices(EVENT_1, FIGHT_1, user1);
+
+        // First claim works
+        vm.prank(user1);
+        booster.claimReward(EVENT_1, FIGHT_1, indices);
+
+        // Second claim reverts
         vm.prank(user1);
         vm.expectRevert("already claimed");
         booster.claimReward(EVENT_1, FIGHT_1, indices);
