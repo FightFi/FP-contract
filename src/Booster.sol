@@ -1117,7 +1117,7 @@ contract Booster is
 
         // Handle cancelled fight (full refund of principal)
         if (fight.cancelled) {
-            payout = _processCancelledBoostRefund(boosts[eventId][fightId], boostIndices, user);
+            payout = _processCancelledBoostRefund(eventId, fightId, boosts[eventId][fightId], boostIndices, user);
             require(payout > 0, "nothing to refund");
             fight.claimedAmount += payout;
             return payout;
@@ -1148,10 +1148,13 @@ contract Booster is
      * @param user Address claiming the refund
      * @return refund Total refund amount
      */
-    function _processCancelledBoostRefund(Boost[] storage fightBoosts, uint256[] calldata boostIndices, address user)
-        internal
-        returns (uint256 refund)
-    {
+    function _processCancelledBoostRefund(
+        string calldata eventId,
+        uint256 fightId,
+        Boost[] storage fightBoosts,
+        uint256[] calldata boostIndices,
+        address user
+    ) internal returns (uint256 refund) {
         refund = 0;
         for (uint256 i = 0; i < boostIndices.length; i++) {
             uint256 index = boostIndices[i];
@@ -1163,6 +1166,8 @@ contract Booster is
 
             refund += boost.amount;
             boost.claimed = true;
+
+            emit RewardClaimed(eventId, fightId, user, index, boost.amount, 0);
         }
     }
 

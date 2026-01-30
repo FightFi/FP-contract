@@ -708,6 +708,26 @@ contract BoosterTest is Test {
 
     // ============ Claim Reward Tests ============
 
+    function test_claimReward_cancelled_emitsEvent() public {
+        _createDefaultEvent();
+        _placeMultipleBoosts();
+
+        // Cancel fight
+        vm.prank(operator);
+        booster.cancelFight(EVENT_1, FIGHT_1);
+
+        // Mark event as claim ready
+        _setEventClaimReady(EVENT_1);
+
+        // Expect RewardClaimed event
+        vm.expectEmit(true, true, true, true);
+        emit Booster.RewardClaimed(EVENT_1, FIGHT_1, user1, 0, 100 ether, 0);
+
+        uint256[] memory indices = booster.getUserBoostIndices(EVENT_1, FIGHT_1, user1);
+        vm.prank(user1);
+        booster.claimReward(EVENT_1, FIGHT_1, indices);
+    }
+
     function test_claimReward_winnerOnly() public {
         _createDefaultEvent();
 
