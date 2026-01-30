@@ -630,6 +630,93 @@ contract BoosterTest is Test {
         assertEq(totalClaimable, 0);
     }
 
+    function test_quoteClaimable_cancelledFight() public {
+        _createDefaultEvent();
+        _placeMultipleBoosts();
+
+        // Cancel fight
+        vm.prank(operator);
+        booster.cancelFight(EVENT_1, FIGHT_1);
+
+        // Quote claimable should return the stake amount for cancelled fight
+        uint256 totalClaimable = booster.quoteClaimable(EVENT_1, FIGHT_1, user1, false);
+        assertEq(totalClaimable, 100 ether, "User1 should get 100 ether refund quote");
+
+        uint256 totalClaimable2 = booster.quoteClaimable(EVENT_1, FIGHT_1, user2, false);
+        assertEq(totalClaimable2, 200 ether, "User2 should get 200 ether refund quote");
+    }
+
+    function test_quoteClaimable_noContestOutcome() public {
+        _createDefaultEvent();
+        _placeMultipleBoosts();
+
+        // Submit No Contest result (which auto-sets cancelled=true)
+        vm.prank(operator);
+        booster.submitFightResult(EVENT_1, FIGHT_1, Booster.Corner.NONE, Booster.WinMethod.NO_CONTEST, 10, 20, 0, 0);
+
+        // Quote claimable should return the stake amount for No Contest outcome
+        uint256 totalClaimable = booster.quoteClaimable(EVENT_1, FIGHT_1, user1, false);
+        assertEq(totalClaimable, 100 ether, "User1 should get 100 ether refund quote (No Contest)");
+
+        uint256 totalClaimable2 = booster.quoteClaimable(EVENT_1, FIGHT_1, user2, false);
+        assertEq(totalClaimable2, 200 ether, "User2 should get 200 ether refund quote (No Contest)");
+    }
+
+    function test_quoteClaimableHistorical_cancelled_includesClaimed() public {
+        _createDefaultEvent();
+        _placeMultipleBoosts();
+
+        // Cancel fight
+        vm.prank(operator);
+        booster.cancelFight(EVENT_1, FIGHT_1);
+
+        _setEventClaimReady(EVENT_1);
+
+        // Quote before claiming
+        uint256 totalClaimableBefore = booster.quoteClaimable(EVENT_1, FIGHT_1, user1, false);
+        uint256 totalHistoricalBefore = booster.quoteClaimableHistorical(EVENT_1, FIGHT_1, user1);
+        assertEq(totalClaimableBefore, 100 ether);
+        assertEq(totalHistoricalBefore, 100 ether);
+
+        // Claim
+        uint256[] memory indices = booster.getUserBoostIndices(EVENT_1, FIGHT_1, user1);
+        vm.prank(user1);
+        booster.claimReward(EVENT_1, FIGHT_1, indices);
+
+        // After claiming
+        uint256 totalClaimableAfter = booster.quoteClaimable(EVENT_1, FIGHT_1, user1, false);
+        uint256 totalHistoricalAfter = booster.quoteClaimableHistorical(EVENT_1, FIGHT_1, user1);
+
+        assertEq(totalClaimableAfter, 0, "Current quote should be 0 after claim");
+        assertEq(totalHistoricalAfter, 100 ether, "Historical quote should still be 100 ether");
+    }
+
+    function testRevert_quoteClaimable_cancelled_afterDeadline() public {
+        // Create event with 1 hour deadline from now
+        uint256 deadline = block.timestamp + 1 hours;
+        vm.prank(operator);
+        booster.createEvent(EVENT_1, 10, SEASON_1, 0);
+        vm.prank(operator);
+        booster.setEventClaimDeadline(EVENT_1, deadline);
+
+        _placeMultipleBoosts();
+
+        // Cancel fight
+        vm.prank(operator);
+        booster.cancelFight(EVENT_1, FIGHT_1);
+
+        // Warp past deadline
+        vm.warp(deadline + 1);
+
+        // Should revert if enforceDeadline is true
+        vm.expectRevert("claim deadline passed");
+        booster.quoteClaimable(EVENT_1, FIGHT_1, user1, true);
+
+        // Should NOT revert if enforceDeadline is false
+        uint256 quote = booster.quoteClaimable(EVENT_1, FIGHT_1, user1, false);
+        assertEq(quote, 100 ether);
+    }
+
     function test_quoteClaimableHistorical_includesClaimed() public {
         _createDefaultEvent();
         _placeMultipleBoosts();
@@ -674,6 +761,26 @@ contract BoosterTest is Test {
     }
 
     // ============ Claim Reward Tests ============
+
+    function test_claimReward_cancelled_emitsEvent() public {
+        _createDefaultEvent();
+        _placeMultipleBoosts();
+
+        // Cancel fight
+        vm.prank(operator);
+        booster.cancelFight(EVENT_1, FIGHT_1);
+
+        // Mark event as claim ready
+        _setEventClaimReady(EVENT_1);
+
+        // Expect RewardClaimed event
+        vm.expectEmit(true, true, true, true);
+        emit Booster.RewardClaimed(EVENT_1, FIGHT_1, user1, 0, 100 ether, 0);
+
+        uint256[] memory indices = booster.getUserBoostIndices(EVENT_1, FIGHT_1, user1);
+        vm.prank(user1);
+        booster.claimReward(EVENT_1, FIGHT_1, indices);
+    }
 
     function test_claimReward_winnerOnly() public {
         _createDefaultEvent();
@@ -1146,6 +1253,28 @@ contract BoosterTest is Test {
         vm.prank(user1);
         booster.claimReward(EVENT_1, FIGHT_1, indices);
 
+        vm.prank(user1);
+        vm.expectRevert("already claimed");
+        booster.claimReward(EVENT_1, FIGHT_1, indices);
+    }
+
+    function testRevert_claimReward_cancelled_alreadyClaimed() public {
+        _createDefaultEvent();
+        _placeMultipleBoosts();
+
+        // Cancel fight
+        vm.prank(operator);
+        booster.cancelFight(EVENT_1, FIGHT_1);
+
+        _setEventClaimReady(EVENT_1);
+
+        uint256[] memory indices = booster.getUserBoostIndices(EVENT_1, FIGHT_1, user1);
+
+        // First claim works
+        vm.prank(user1);
+        booster.claimReward(EVENT_1, FIGHT_1, indices);
+
+        // Second claim reverts
         vm.prank(user1);
         vm.expectRevert("already claimed");
         booster.claimReward(EVENT_1, FIGHT_1, indices);
@@ -2404,18 +2533,7 @@ contract BoosterTest is Test {
         booster.depositBonus(EVENT_1, FIGHT_1, bonusAmount, false);
 
         // Verify initial state
-        (
-            ,,,
-            uint256 bonusPool,
-            uint256 originalPool,
-            uint256 _sumWinnersStakes,
-            uint256 _winningPoolTotalShares,
-            uint256 _pointsForWinner,
-            uint256 _pointsForWinnerMethod,
-            uint256 claimedAmount,
-            uint256 _boostCutoff,
-            bool _cancelled
-        ) = booster.getFight(EVENT_1, FIGHT_1);
+        (,,, uint256 bonusPool, uint256 originalPool,,,,, uint256 claimedAmount,,) = booster.getFight(EVENT_1, FIGHT_1);
         uint256 totalPool = originalPool + bonusPool;
 
         console2.log("Initial state:");
@@ -2477,18 +2595,7 @@ contract BoosterTest is Test {
         );
 
         // STEP 3: Check fight.claimedAmount - BUG FIXED: should be updated now
-        (
-            ,,,
-            uint256 _bonusPool2,
-            uint256 _originalPool2,
-            uint256 _sumWinnersStakes2,
-            uint256 _winningPoolTotalShares2,
-            uint256 _pointsForWinner2,
-            uint256 _pointsForWinnerMethod2,
-            uint256 claimedAmountAfterRefunds,
-            uint256 _boostCutoff2,
-            bool _cancelled2
-        ) = booster.getFight(EVENT_1, FIGHT_1);
+        (,,,,,,,,, uint256 claimedAmountAfterRefunds,,) = booster.getFight(EVENT_1, FIGHT_1);
 
         console2.log("\nBug Fix Verification:");
         console2.log("  fight.claimedAmount after refunds: %d", claimedAmountAfterRefunds);

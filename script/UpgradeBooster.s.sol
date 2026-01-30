@@ -3,17 +3,18 @@ pragma solidity ^0.8.20;
 
 import { Script, console2 } from "forge-std/Script.sol";
 import { Booster } from "src/Booster.sol";
-import { UUPSUpgradeable } from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
 /**
  * @title UpgradeBooster
  * @notice Script to upgrade Booster proxy to a new implementation
  * @dev Usage:
- *   forge script script/UpgradeBooster.s.sol:UpgradeBooster \
- *     --rpc-url https://bsc-testnet.publicnode.com \
- *     --broadcast \
- *     --verify \
- *     -vvvv
+ *     forge script script/UpgradeBooster.s.sol:UpgradeBooster \
+ *       --rpc-url https://bsc-testnet.publicnode.com \
+ *       --broadcast \
+ *       --verify \
+ *       --with-gas-price 20000000000 \
+ *       --priority-gas-price 2000000000 \
+ *       -vv
  *
  * Required env vars:
  *   PRIVATE_KEY - Admin private key (must have DEFAULT_ADMIN_ROLE)

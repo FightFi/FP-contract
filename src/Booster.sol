@@ -909,13 +909,25 @@ contract Booster is
             uint256 deadline = evt.claimDeadline;
             require(deadline == 0 || block.timestamp <= deadline, "claim deadline passed");
         }
+        uint256[] storage indices = userBoostIndices[eventId][fightId][user];
         totalClaimable = 0;
+
+        // Handle cancelled fight (full refund of principal)
+        if (fight.cancelled) {
+            for (uint256 i = 0; i < indices.length; i++) {
+                Boost storage boost = boosts[eventId][fightId][indices[i]];
+                if (includeClaimed || !boost.claimed) {
+                    totalClaimable += boost.amount;
+                }
+            }
+            return totalClaimable;
+        }
+
         // If no winners, return zeros
         if (fight.sumWinnersStakes == 0 || fight.winningPoolTotalShares == 0) {
             return totalClaimable;
         }
 
-        uint256[] storage indices = userBoostIndices[eventId][fightId][user];
         uint256 prizePool = fight.originalPool - fight.sumWinnersStakes + fight.bonusPool;
         for (uint256 i = 0; i < indices.length; i++) {
             Boost storage boost = boosts[eventId][fightId][indices[i]];
@@ -1105,7 +1117,7 @@ contract Booster is
 
         // Handle cancelled fight (full refund of principal)
         if (fight.cancelled) {
-            payout = _processCancelledBoostRefund(boosts[eventId][fightId], boostIndices, user);
+            payout = _processCancelledBoostRefund(eventId, fightId, boosts[eventId][fightId], boostIndices, user);
             require(payout > 0, "nothing to refund");
             fight.claimedAmount += payout;
             return payout;
@@ -1136,10 +1148,13 @@ contract Booster is
      * @param user Address claiming the refund
      * @return refund Total refund amount
      */
-    function _processCancelledBoostRefund(Boost[] storage fightBoosts, uint256[] calldata boostIndices, address user)
-        internal
-        returns (uint256 refund)
-    {
+    function _processCancelledBoostRefund(
+        string calldata eventId,
+        uint256 fightId,
+        Boost[] storage fightBoosts,
+        uint256[] calldata boostIndices,
+        address user
+    ) internal returns (uint256 refund) {
         refund = 0;
         for (uint256 i = 0; i < boostIndices.length; i++) {
             uint256 index = boostIndices[i];
@@ -1151,6 +1166,8 @@ contract Booster is
 
             refund += boost.amount;
             boost.claimed = true;
+
+            emit RewardClaimed(eventId, fightId, user, index, boost.amount, 0);
         }
     }
 
