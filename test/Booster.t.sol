@@ -629,6 +629,7 @@ contract BoosterTest is Test {
 
         assertEq(totalClaimable, 0);
     }
+
     function test_quoteClaimable_cancelledFight() public {
         _createDefaultEvent();
         _placeMultipleBoosts();
@@ -651,9 +652,7 @@ contract BoosterTest is Test {
 
         // Submit No Contest result (which auto-sets cancelled=true)
         vm.prank(operator);
-        booster.submitFightResult(
-            EVENT_1, FIGHT_1, Booster.Corner.NONE, Booster.WinMethod.NO_CONTEST, 10, 20, 0, 0
-        );
+        booster.submitFightResult(EVENT_1, FIGHT_1, Booster.Corner.NONE, Booster.WinMethod.NO_CONTEST, 10, 20, 0, 0);
 
         // Quote claimable should return the stake amount for No Contest outcome
         uint256 totalClaimable = booster.quoteClaimable(EVENT_1, FIGHT_1, user1, false);
