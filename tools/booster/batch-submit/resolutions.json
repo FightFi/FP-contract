@@ -1,5 +1,5 @@
 {
-  "eventId": "ufc-325",
+  "eventId": "ufc-fight-night-feb-7-2026",
   "fights": [
     {
       "fightId": 1,
@@ -7,29 +7,29 @@
       "method": "DECISION",
       "pointsForWinner": "3",
       "pointsForWinnerMethod": "4",
-      "sumWinnersStakes": "119363",
-      "winningPoolTotalShares": "424287",
-      "totalAmountStaked": "126459"
+      "sumWinnersStakes": "3065",
+      "winningPoolTotalShares": "11235",
+      "totalAmountStaked": "11656"
     },
     {
       "fightId": 2,
       "winner": "BLUE",
-      "method": "KNOCKOUT",
+      "method": "DECISION",
       "pointsForWinner": "3",
       "pointsForWinnerMethod": "4",
-      "sumWinnersStakes": "41568",
-      "winningPoolTotalShares": "127979",
-      "totalAmountStaked": "42833"
+      "sumWinnersStakes": "1500",
+      "winningPoolTotalShares": "5215",
+      "totalAmountStaked": "2390"
     },
     {
       "fightId": 3,
-      "winner": "BLUE",
-      "method": "KNOCKOUT",
+      "winner": "RED",
+      "method": "DECISION",
       "pointsForWinner": "3",
       "pointsForWinnerMethod": "4",
-      "sumWinnersStakes": "14183",
-      "winningPoolTotalShares": "49874",
-      "totalAmountStaked": "20742"
+      "sumWinnersStakes": "12719",
+      "winningPoolTotalShares": "40307",
+      "totalAmountStaked": "13749"
     },
     {
       "fightId": 4,
@@ -37,29 +37,9 @@
       "method": "DECISION",
       "pointsForWinner": "3",
       "pointsForWinnerMethod": "4",
-      "sumWinnersStakes": "24305",
-      "winningPoolTotalShares": "73095",
-      "totalAmountStaked": "24778"
-    },
-    {
-      "fightId": 5,
-      "winner": "RED",
-      "method": "SUBMISSION",
-      "pointsForWinner": "3",
-      "pointsForWinnerMethod": "4",
-      "sumWinnersStakes": "52505",
-      "winningPoolTotalShares": "158975",
-      "totalAmountStaked": "52739"
-    },
-    {
-      "fightId": 6,
-      "winner": "RED",
-      "method": "KNOCKOUT",
-      "pointsForWinner": "3",
-      "pointsForWinnerMethod": "4",
-      "sumWinnersStakes": "21447",
-      "winningPoolTotalShares": "77332",
-      "totalAmountStaked": "21597"
+      "sumWinnersStakes": "2525",
+      "winningPoolTotalShares": "9265",
+      "totalAmountStaked": "4215"
     },
     {
       "fightId": 7,
@@ -67,29 +47,19 @@
       "method": "DECISION",
       "pointsForWinner": "3",
       "pointsForWinnerMethod": "4",
-      "sumWinnersStakes": "5326",
-      "winningPoolTotalShares": "20843",
-      "totalAmountStaked": "15239"
+      "sumWinnersStakes": "9445",
+      "winningPoolTotalShares": "28545",
+      "totalAmountStaked": "11045"
     },
     {
       "fightId": 8,
-      "winner": "RED",
-      "method": "SUBMISSION",
-      "pointsForWinner": "3",
-      "pointsForWinnerMethod": "4",
-      "sumWinnersStakes": "4171",
-      "winningPoolTotalShares": "12832",
-      "totalAmountStaked": "11286"
-    },
-    {
-      "fightId": 9,
-      "winner": "RED",
+      "winner": "BLUE",
       "method": "DECISION",
       "pointsForWinner": "3",
       "pointsForWinnerMethod": "4",
-      "sumWinnersStakes": "6751",
-      "winningPoolTotalShares": "26413",
-      "totalAmountStaked": "13537"
+      "sumWinnersStakes": "830",
+      "winningPoolTotalShares": "2670",
+      "totalAmountStaked": "6520"
     },
     {
       "fightId": 10,
@@ -97,9 +67,9 @@
       "method": "SUBMISSION",
       "pointsForWinner": "3",
       "pointsForWinnerMethod": "4",
-      "sumWinnersStakes": "18213",
-      "winningPoolTotalShares": "65495",
-      "totalAmountStaked": "18481"
+      "sumWinnersStakes": "2890",
+      "winningPoolTotalShares": "9070",
+      "totalAmountStaked": "46226"
     }
   ]
 }
